@@ -6,7 +6,7 @@ import { generateVFXGLTF } from './utils/vfxGenerator'
 import { EFFECT_PRESETS, getEffectPreset, PARTICLE_SHAPE_OPTIONS } from './utils/effectBlueprint'
 
 const defaultPreset = (() => {
-  const preset = getEffectPreset('fireball') || {
+  const fallback = {
     particleCount: 60,
     particleSize: 0.22,
     particleSpeed: 1.6,
@@ -15,13 +15,18 @@ const defaultPreset = (() => {
     secondaryColor: '#ffa500',
     emissionShape: 'sphere',
     animationType: 'explode',
-    glowIntensity: 2.4,
-    lifetime: 1.8
+    glowIntensity: 1,
+    lifetime: 1.8,
+    particleShape: 'style'
   }
 
+  const preset = getEffectPreset('fireball')
+
   return {
-    particleShape: 'style',
-    ...preset
+    ...fallback,
+    ...(preset || {}),
+    glowIntensity: 1,
+    particleShape: (preset && preset.particleShape) || fallback.particleShape
   }
 })()
 
@@ -40,6 +45,7 @@ function App() {
         return {
           ...prev,
           ...(preset || {}),
+          glowIntensity: 1,
           particleShape: (preset && preset.particleShape) || 'style',
           effectType: value
         }
@@ -95,7 +101,7 @@ function App() {
       particleSize: Number(jitter(preset.particleSize, 0.85, 1.2).toFixed(2)),
       particleSpeed: Number(jitter(preset.particleSpeed, 0.8, 1.25).toFixed(2)),
       spread: Number(jitter(preset.spread, 0.8, 1.3).toFixed(2)),
-      glowIntensity: Number(jitter(preset.glowIntensity, 0.8, 1.2).toFixed(2)),
+      glowIntensity: 1,
       lifetime: Number(jitter(preset.lifetime, 0.85, 1.2).toFixed(2)),
     })
   }

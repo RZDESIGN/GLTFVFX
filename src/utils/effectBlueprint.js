@@ -496,7 +496,7 @@ export const EFFECT_PRESETS = {
     secondaryColor: '#a7f7ff',
     emissionShape: 'sphere',
     animationType: 'orbit',
-    glowIntensity: 2.6,
+    glowIntensity: 1,
     lifetime: 3,
     particleShape: 'style'
   },
@@ -509,7 +509,7 @@ export const EFFECT_PRESETS = {
     secondaryColor: '#ffb347',
     emissionShape: 'sphere',
     animationType: 'explode',
-    glowIntensity: 3.4,
+    glowIntensity: 1,
     lifetime: 1.6,
     particleShape: 'style'
   },
@@ -522,7 +522,7 @@ export const EFFECT_PRESETS = {
     secondaryColor: '#f3fbff',
     emissionShape: 'cone',
     animationType: 'rise',
-    glowIntensity: 1.8,
+    glowIntensity: 1,
     lifetime: 2.8,
     particleShape: 'style'
   },
@@ -535,7 +535,7 @@ export const EFFECT_PRESETS = {
     secondaryColor: '#f2d3a2',
     emissionShape: 'box',
     animationType: 'explode',
-    glowIntensity: 1.2,
+    glowIntensity: 1,
     lifetime: 1.4,
     particleShape: 'style'
   },
@@ -548,7 +548,7 @@ export const EFFECT_PRESETS = {
     secondaryColor: '#e0f7ff',
     emissionShape: 'cone',
     animationType: 'spiral',
-    glowIntensity: 2.0,
+    glowIntensity: 1,
     lifetime: 3.8,
     particleShape: 'style'
   },
@@ -561,7 +561,7 @@ export const EFFECT_PRESETS = {
     secondaryColor: '#ffe4f6',
     emissionShape: 'ring',
     animationType: 'pulse',
-    glowIntensity: 3,
+    glowIntensity: 1,
     lifetime: 2.2,
     particleShape: 'style'
   },
@@ -574,7 +574,7 @@ export const EFFECT_PRESETS = {
     secondaryColor: '#a8a8a8',
     emissionShape: 'sphere',
     animationType: 'rise',
-    glowIntensity: 0.9,
+    glowIntensity: 1,
     lifetime: 3.6,
     particleShape: 'style'
   },
@@ -587,7 +587,7 @@ export const EFFECT_PRESETS = {
     secondaryColor: '#97fffb',
     emissionShape: 'ring',
     animationType: 'pulse',
-    glowIntensity: 3.2,
+    glowIntensity: 1,
     lifetime: 2.6,
     particleShape: 'style'
   }

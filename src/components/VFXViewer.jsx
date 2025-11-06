@@ -185,6 +185,7 @@ const VFXViewer = ({ params }) => {
   const sceneRef = useRef(null)
   const cameraRef = useRef(null)
   const rendererRef = useRef(null)
+  const previewGroupRef = useRef(null)
   const particleSystemRef = useRef(null)
   const animationIdRef = useRef(null)
   const clockRef = useRef(new THREE.Clock())
@@ -193,8 +194,8 @@ const VFXViewer = ({ params }) => {
   const [particleCount, setParticleCount] = useState(0)
 
   const isDragging = useRef(false)
-  const lastMouseX = useRef(0)
-  const autoRotate = useRef(true)
+  const lastPointer = useRef({ x: 0, y: 0 })
+  const zoomDistance = useRef(5)
 
   useEffect(() => {
     if (!canvasRef.current) return
@@ -211,7 +212,8 @@ const VFXViewer = ({ params }) => {
       0.1,
       1000
     )
-    camera.position.set(0, 0, 5)
+    camera.position.set(0, 2.2, zoomDistance.current)
+    camera.lookAt(0, 0, 0)
     cameraRef.current = camera
 
     const renderer = new THREE.WebGLRenderer({
@@ -230,6 +232,19 @@ const VFXViewer = ({ params }) => {
     directionalLight.position.set(5, 5, 5)
     scene.add(directionalLight)
 
+    const previewGroup = new THREE.Group()
+    previewGroup.rotation.set(-0.35, 0.4, 0)
+    previewGroupRef.current = previewGroup
+    scene.add(previewGroup)
+
+    const gridHelper = new THREE.GridHelper(6, 12, 0x555555, 0x333333)
+    gridHelper.material.opacity = 0.25
+    gridHelper.material.transparent = true
+    previewGroup.add(gridHelper)
+
+    const axesHelper = new THREE.AxesHelper(2.5)
+    previewGroup.add(axesHelper)
+
     const handleResize = () => {
       if (!canvasRef.current || !cameraRef.current || !rendererRef.current) return
       const width = parent.clientWidth
@@ -241,45 +256,61 @@ const VFXViewer = ({ params }) => {
     window.addEventListener('resize', handleResize)
 
     const handleMouseDown = (event) => {
+      if (!previewGroupRef.current) return
       isDragging.current = true
-      lastMouseX.current = event.clientX
-      autoRotate.current = false
+      lastPointer.current = { x: event.clientX, y: event.clientY }
     }
 
     const handleMouseMove = (event) => {
-      if (!isDragging.current || !particleSystemRef.current) return
-      const deltaX = event.clientX - lastMouseX.current
-      particleSystemRef.current.rotation.y += deltaX * 0.01
-      lastMouseX.current = event.clientX
+      if (!isDragging.current || !previewGroupRef.current) return
+      const deltaX = event.clientX - lastPointer.current.x
+      const deltaY = event.clientY - lastPointer.current.y
+
+      previewGroupRef.current.rotation.y += deltaX * 0.01
+      previewGroupRef.current.rotation.x += deltaY * 0.01
+      previewGroupRef.current.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, previewGroupRef.current.rotation.x))
+
+      lastPointer.current = { x: event.clientX, y: event.clientY }
     }
 
     const handleMouseUp = () => {
       isDragging.current = false
-      autoRotate.current = true
+    }
+
+    const handleWheel = (event) => {
+      if (!cameraRef.current) return
+      zoomDistance.current = Math.max(2, Math.min(14, zoomDistance.current + event.deltaY * 0.01))
+      cameraRef.current.position.set(0, 0, zoomDistance.current)
     }
 
     canvasRef.current.addEventListener('mousedown', handleMouseDown)
     canvasRef.current.addEventListener('mousemove', handleMouseMove)
     canvasRef.current.addEventListener('mouseup', handleMouseUp)
     canvasRef.current.addEventListener('mouseleave', handleMouseUp)
+    canvasRef.current.addEventListener('wheel', handleWheel, { passive: true })
 
     const handleTouchStart = (event) => {
-      if (event.touches.length !== 1) return
+      if (event.touches.length !== 1 || !previewGroupRef.current) return
       isDragging.current = true
-      lastMouseX.current = event.touches[0].clientX
-      autoRotate.current = false
+      const touch = event.touches[0]
+      lastPointer.current = { x: touch.clientX, y: touch.clientY }
     }
 
     const handleTouchMove = (event) => {
-      if (!isDragging.current || event.touches.length !== 1 || !particleSystemRef.current) return
-      const deltaX = event.touches[0].clientX - lastMouseX.current
-      particleSystemRef.current.rotation.y += deltaX * 0.01
-      lastMouseX.current = event.touches[0].clientX
+      if (!isDragging.current || event.touches.length !== 1 || !previewGroupRef.current) return
+      const touch = event.touches[0]
+      const deltaX = touch.clientX - lastPointer.current.x
+      const deltaY = touch.clientY - lastPointer.current.y
+
+      previewGroupRef.current.rotation.y += deltaX * 0.01
+      previewGroupRef.current.rotation.x += deltaY * 0.01
+      previewGroupRef.current.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, previewGroupRef.current.rotation.x))
+
+      lastPointer.current = { x: touch.clientX, y: touch.clientY }
     }
 
     const handleTouchEnd = () => {
       isDragging.current = false
-      autoRotate.current = true
     }
 
     canvasRef.current.addEventListener('touchstart', handleTouchStart)
@@ -292,6 +323,7 @@ const VFXViewer = ({ params }) => {
       const elapsed = clockRef.current.getElapsedTime()
 
       const particleSystem = particleSystemRef.current
+      const previewGroup = previewGroupRef.current
       const blueprint = blueprintRef.current
 
       if (particleSystem && blueprint) {
@@ -312,9 +344,7 @@ const VFXViewer = ({ params }) => {
           sampleVector3(times, keyframes.scales, playbackTime, particle.scale)
         })
 
-        if (autoRotate.current) {
-          particleSystem.rotation.y += delta * (style.systemRotationSpeed ?? 0.35)
-        }
+        
       }
 
       if (sceneRef.current && cameraRef.current && rendererRef.current) {
@@ -329,6 +359,17 @@ const VFXViewer = ({ params }) => {
       if (animationIdRef.current) {
         cancelAnimationFrame(animationIdRef.current)
       }
+      if (previewGroupRef.current) {
+        previewGroupRef.current.children.forEach(child => {
+          if (child instanceof THREE.Mesh) {
+            disposeMaterial(child.material)
+            child.geometry?.dispose()
+          }
+        })
+        previewGroupRef.current.clear()
+        sceneRef.current?.remove(previewGroupRef.current)
+        previewGroupRef.current = null
+      }
       if (rendererRef.current) {
         rendererRef.current.dispose()
       }
@@ -337,6 +378,7 @@ const VFXViewer = ({ params }) => {
         canvasRef.current.removeEventListener('mousemove', handleMouseMove)
         canvasRef.current.removeEventListener('mouseup', handleMouseUp)
         canvasRef.current.removeEventListener('mouseleave', handleMouseUp)
+        canvasRef.current.removeEventListener('wheel', handleWheel)
         canvasRef.current.removeEventListener('touchstart', handleTouchStart)
         canvasRef.current.removeEventListener('touchmove', handleTouchMove)
         canvasRef.current.removeEventListener('touchend', handleTouchEnd)
@@ -352,9 +394,12 @@ const VFXViewer = ({ params }) => {
     blueprintRef.current = blueprint
     effectStartTimeRef.current = clockRef.current.getElapsedTime()
 
+    const previewGroup = previewGroupRef.current
+    if (!previewGroup) return
+
     if (particleSystemRef.current) {
       const existing = particleSystemRef.current
-      sceneRef.current.remove(existing)
+      previewGroup.remove(existing)
       existing.children.forEach(child => disposeMaterial(child.material))
       existing.clear()
     }
@@ -362,7 +407,7 @@ const VFXViewer = ({ params }) => {
     const particleSystem = new THREE.Group()
     particleSystem.userData.style = style
     particleSystemRef.current = particleSystem
-    sceneRef.current.add(particleSystem)
+    previewGroup.add(particleSystem)
 
     const geometry = getGeometryFromConfig(style.geometry)
 
@@ -390,8 +435,8 @@ const VFXViewer = ({ params }) => {
     setParticleCount(particles.length)
 
     return () => {
-      if (!particleSystemRef.current) return
-      sceneRef.current.remove(particleSystemRef.current)
+      if (!particleSystemRef.current || !previewGroupRef.current) return
+      previewGroupRef.current.remove(particleSystemRef.current)
       particleSystemRef.current.children.forEach(child =>
         disposeMaterial(child.material)
       )

@@ -122,6 +122,7 @@ const buildExportScene = (params) => {
     duration,
     tracks
   )
+  clip.optimize()
 
   return {
     scene,
@@ -152,7 +153,26 @@ export const generateVFXGLTF = async (params) => {
     }
 
     if (Array.isArray(gltf.animations) && gltf.animations[0]) {
-      gltf.animations[0].name = `${params.effectType}_animation`
+      gltf.animations.forEach((animation, index) => {
+        animation.name = `${params.effectType}_animation${gltf.animations.length > 1 ? `_${index}` : ''}`
+        animation.extras = {
+          ...(animation.extras || {}),
+          loop: true,
+          playMode: 'loop'
+        }
+        animation.channels?.forEach(channel => {
+          channel.extras = {
+            ...(channel.extras || {}),
+            loop: true
+          }
+        })
+        animation.samplers?.forEach(sampler => {
+          sampler.extras = {
+            ...(sampler.extras || {}),
+            loop: true
+          }
+        })
+      })
     }
 
     if (Array.isArray(gltf.nodes)) {
