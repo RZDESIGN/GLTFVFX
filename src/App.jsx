@@ -3,71 +3,88 @@ import './App.css'
 import VFXViewer from './components/VFXViewer'
 import GeneratorPanel from './components/GeneratorPanel'
 import { generateVFXGLTF } from './utils/vfxGenerator'
+import { EFFECT_PRESETS, getEffectPreset } from './utils/effectBlueprint'
 
-const initialParams = {
-  effectType: 'fireball',
-  particleCount: 50,
-  particleSize: 0.2,
-  particleSpeed: 1.0,
-  spread: 1.0,
+const defaultPreset = getEffectPreset('fireball') || {
+  particleCount: 60,
+  particleSize: 0.22,
+  particleSpeed: 1.6,
+  spread: 1.1,
   primaryColor: '#ff4500',
   secondaryColor: '#ffa500',
   emissionShape: 'sphere',
   animationType: 'explode',
-  glowIntensity: 2.0,
-  lifetime: 2.0,
+  glowIntensity: 2.4,
+  lifetime: 1.8
+}
+
+const initialParams = {
+  effectType: 'fireball',
+  ...defaultPreset
 }
 
 function App() {
   const [vfxParams, setVfxParams] = useState(initialParams)
 
   const handleParamChange = (param, value) => {
-    setVfxParams(prev => ({
-      ...prev,
-      [param]: value
-    }))
+    setVfxParams(prev => {
+      if (param === 'effectType') {
+        const preset = getEffectPreset(value)
+        return {
+          ...prev,
+          ...(preset || {}),
+          effectType: value
+        }
+      }
+
+      return {
+        ...prev,
+        [param]: value
+      }
+    })
   }
 
-  const handleExportGLTF = () => {
-    const gltfData = generateVFXGLTF(vfxParams)
-    const blob = new Blob([JSON.stringify(gltfData, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${vfxParams.effectType}-effect.gltf`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    
-    // Show helpful message
-    setTimeout(() => {
-      alert('✨ GLTF template exported!\n\n⚠️ This is a JSON template for reference only.\n\nFor production use:\n✅ Use pre-made files in /public/examples/\n✅ OR recreate your design in Blockbench/Blender\n\nExported templates lack binary geometry data needed for game engines.')
-    }, 100)
+  const handleExportGLTF = async () => {
+    try {
+      const gltfData = await generateVFXGLTF(vfxParams)
+      const blob = new Blob([JSON.stringify(gltfData, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${vfxParams.effectType}-effect.gltf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      setTimeout(() => {
+        alert('✨ GLTF exported!\n\nThe file includes geometry, materials, and looping animation data matching the on-screen effect.\n\nTip: Import into your engine or run through glTF validation if you need extra assurance.')
+      }, 80)
+    } catch (error) {
+      console.error('[gltf-export]', error)
+      alert('Export failed. Please check the console for details.')
+    }
   }
 
   const handleRandomize = () => {
-    const effectTypes = ['aura', 'fireball', 'ice', 'ground-smash', 'tornado', 'sparkles', 'smoke', 'energy-beam']
-    const shapes = ['sphere', 'cone', 'ring', 'box']
-    const animations = ['orbit', 'rise', 'explode', 'spiral', 'pulse']
-    
-    const randomColor = () => {
-      const colors = ['#ff4500', '#ffa500', '#00bfff', '#9370db', '#32cd32', '#ff69b4', '#ffd700', '#ff1493']
-      return colors[Math.floor(Math.random() * colors.length)]
+    const effectTypes = Object.keys(EFFECT_PRESETS)
+    const selectedEffect = effectTypes[Math.floor(Math.random() * effectTypes.length)] || 'fireball'
+    const preset = getEffectPreset(selectedEffect) || defaultPreset
+
+    const jitter = (value, minFactor, maxFactor) => {
+      const factor = minFactor + Math.random() * (maxFactor - minFactor)
+      return value * factor
     }
 
     setVfxParams({
-      effectType: effectTypes[Math.floor(Math.random() * effectTypes.length)],
-      particleCount: Math.floor(Math.random() * 150) + 20,
-      particleSize: Math.random() * 0.4 + 0.1,
-      particleSpeed: Math.random() * 2 + 0.5,
-      spread: Math.random() * 2 + 0.5,
-      primaryColor: randomColor(),
-      secondaryColor: randomColor(),
-      emissionShape: shapes[Math.floor(Math.random() * shapes.length)],
-      animationType: animations[Math.floor(Math.random() * animations.length)],
-      glowIntensity: Math.random() * 3 + 1,
-      lifetime: Math.random() * 3 + 1,
+      effectType: selectedEffect,
+      ...preset,
+      particleCount: Math.max(8, Math.round(jitter(preset.particleCount, 0.75, 1.25))),
+      particleSize: Number(jitter(preset.particleSize, 0.85, 1.2).toFixed(2)),
+      particleSpeed: Number(jitter(preset.particleSpeed, 0.8, 1.25).toFixed(2)),
+      spread: Number(jitter(preset.spread, 0.8, 1.3).toFixed(2)),
+      glowIntensity: Number(jitter(preset.glowIntensity, 0.8, 1.2).toFixed(2)),
+      lifetime: Number(jitter(preset.lifetime, 0.85, 1.2).toFixed(2)),
     })
   }
 
@@ -96,4 +113,3 @@ function App() {
 }
 
 export default App
-

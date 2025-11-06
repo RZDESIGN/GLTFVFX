@@ -1,6 +1,84 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import './VFXViewer.css'
+import { buildParticleSystemBlueprint } from '../utils/effectBlueprint'
+
+const geometryCache = new Map()
+
+const getGeometryKey = (geometryConfig = {}) => JSON.stringify(geometryConfig)
+
+const createGeometryFromConfig = (config = {}) => {
+  switch (config.type) {
+    case 'sphere':
+      return new THREE.SphereGeometry(
+        0.5,
+        config.widthSegments ?? 16,
+        config.heightSegments ?? 12
+      )
+    case 'icosahedron':
+      return new THREE.IcosahedronGeometry(0.5, config.detail ?? 0)
+    case 'octahedron':
+      return new THREE.OctahedronGeometry(0.5, config.detail ?? 0)
+    case 'tetrahedron':
+      return new THREE.TetrahedronGeometry(0.5, config.detail ?? 0)
+    case 'cylinder': {
+      const topRadius = config.topRadius ?? 0.2
+      const bottomRadius = config.bottomRadius ?? topRadius
+      const height = config.height ?? 1
+      const radialSegments = config.radialSegments ?? 12
+      const openEnded = config.openEnded ?? false
+      return new THREE.CylinderGeometry(
+        topRadius,
+        bottomRadius,
+        height,
+        radialSegments,
+        1,
+        openEnded
+      )
+    }
+    case 'box':
+    default:
+      return new THREE.BoxGeometry(1, 1, 1)
+  }
+}
+
+const getGeometryFromConfig = (config = {}) => {
+  const key = getGeometryKey(config)
+  if (!geometryCache.has(key)) {
+    const geometry = createGeometryFromConfig(config)
+    geometry.computeVertexNormals()
+    geometryCache.set(key, geometry)
+  }
+  return geometryCache.get(key)
+}
+
+const createMaterialForParticle = (style, state) => {
+  const color = new THREE.Color(state.color)
+
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    emissive: color.clone(),
+    emissiveIntensity: state.emissiveIntensity,
+    metalness: style.metalness ?? 0.2,
+    roughness: style.roughness ?? 0.5,
+    transparent: style.alphaMode === 'BLEND',
+    opacity: state.opacity,
+    depthWrite: style.depthWrite ?? true
+  })
+
+  material.side = THREE.DoubleSide
+
+  return material
+}
+
+const disposeMaterial = (material) => {
+  if (!material) return
+  if (Array.isArray(material)) {
+    material.forEach(disposeMaterial)
+    return
+  }
+  material.dispose()
+}
 
 const VFXViewer = ({ params }) => {
   const canvasRef = useRef(null)
@@ -20,34 +98,30 @@ const VFXViewer = ({ params }) => {
   useEffect(() => {
     if (!canvasRef.current) return
 
-    // Initialize Three.js scene
+    const parent = canvasRef.current.parentElement
+    if (!parent) return
+
     const scene = new THREE.Scene()
     sceneRef.current = scene
 
-    // Camera setup
     const camera = new THREE.PerspectiveCamera(
       60,
-      canvasRef.current.parentElement.clientWidth / canvasRef.current.parentElement.clientHeight,
+      parent.clientWidth / parent.clientHeight,
       0.1,
       1000
     )
     camera.position.set(0, 0, 5)
     cameraRef.current = camera
 
-    // Renderer setup
     const renderer = new THREE.WebGLRenderer({
       canvas: canvasRef.current,
       alpha: true,
       antialias: true
     })
-    renderer.setSize(
-      canvasRef.current.parentElement.clientWidth,
-      canvasRef.current.parentElement.clientHeight
-    )
+    renderer.setSize(parent.clientWidth, parent.clientHeight)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     rendererRef.current = renderer
 
-    // Lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
     scene.add(ambientLight)
 
@@ -55,31 +129,27 @@ const VFXViewer = ({ params }) => {
     directionalLight.position.set(5, 5, 5)
     scene.add(directionalLight)
 
-    // Handle window resize
     const handleResize = () => {
-      if (!canvasRef.current) return
-      const width = canvasRef.current.parentElement.clientWidth
-      const height = canvasRef.current.parentElement.clientHeight
-      camera.aspect = width / height
-      camera.updateProjectionMatrix()
-      renderer.setSize(width, height)
+      if (!canvasRef.current || !cameraRef.current || !rendererRef.current) return
+      const width = parent.clientWidth
+      const height = parent.clientHeight
+      cameraRef.current.aspect = width / height
+      cameraRef.current.updateProjectionMatrix()
+      rendererRef.current.setSize(width, height)
     }
     window.addEventListener('resize', handleResize)
 
-    // Mouse interaction handlers
-    const handleMouseDown = (e) => {
+    const handleMouseDown = (event) => {
       isDragging.current = true
-      lastMouseX.current = e.clientX
+      lastMouseX.current = event.clientX
       autoRotate.current = false
     }
 
-    const handleMouseMove = (e) => {
-      if (!isDragging.current) return
-      const deltaX = e.clientX - lastMouseX.current
-      if (particleSystemRef.current) {
-        particleSystemRef.current.rotation.y += deltaX * 0.01
-      }
-      lastMouseX.current = e.clientX
+    const handleMouseMove = (event) => {
+      if (!isDragging.current || !particleSystemRef.current) return
+      const deltaX = event.clientX - lastMouseX.current
+      particleSystemRef.current.rotation.y += deltaX * 0.01
+      lastMouseX.current = event.clientX
     }
 
     const handleMouseUp = () => {
@@ -92,22 +162,18 @@ const VFXViewer = ({ params }) => {
     canvasRef.current.addEventListener('mouseup', handleMouseUp)
     canvasRef.current.addEventListener('mouseleave', handleMouseUp)
 
-    // Touch support
-    const handleTouchStart = (e) => {
-      if (e.touches.length === 1) {
-        isDragging.current = true
-        lastMouseX.current = e.touches[0].clientX
-        autoRotate.current = false
-      }
+    const handleTouchStart = (event) => {
+      if (event.touches.length !== 1) return
+      isDragging.current = true
+      lastMouseX.current = event.touches[0].clientX
+      autoRotate.current = false
     }
 
-    const handleTouchMove = (e) => {
-      if (!isDragging.current || e.touches.length !== 1) return
-      const deltaX = e.touches[0].clientX - lastMouseX.current
-      if (particleSystemRef.current) {
-        particleSystemRef.current.rotation.y += deltaX * 0.01
-      }
-      lastMouseX.current = e.touches[0].clientX
+    const handleTouchMove = (event) => {
+      if (!isDragging.current || event.touches.length !== 1 || !particleSystemRef.current) return
+      const deltaX = event.touches[0].clientX - lastMouseX.current
+      particleSystemRef.current.rotation.y += deltaX * 0.01
+      lastMouseX.current = event.touches[0].clientX
     }
 
     const handleTouchEnd = () => {
@@ -119,67 +185,130 @@ const VFXViewer = ({ params }) => {
     canvasRef.current.addEventListener('touchmove', handleTouchMove)
     canvasRef.current.addEventListener('touchend', handleTouchEnd)
 
-    // Animation loop
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate)
       const delta = clockRef.current.getDelta()
       const elapsed = clockRef.current.getElapsedTime()
 
       if (particleSystemRef.current) {
-        const particles = particleSystemRef.current.children
+        const style = particleSystemRef.current.userData.style || {}
+        const riseSpeed = style.riseSpeed ?? 0.5
+        const riseHeight = style.riseHeight ?? 3
+        const spiralHeight = style.spiralHeight ?? 1.2
+        const spiralTaper = style.spiralTaper ?? 0.3
+        const explosionSpread = style.explosionSpread ?? 2
+        const explosionShrink = style.explosionShrink ?? 0.85
+        const pulseBase = style.pulseScaleBase ?? 0.55
+        const pulseRange = style.pulseScaleRange ?? 0.75
 
-        particles.forEach((particle, i) => {
-          const userData = particle.userData
+        particleSystemRef.current.children.forEach(particle => {
+          const data = particle.userData
+          const baseScale = data.baseScale
+          const effectiveSpeed = params.particleSpeed * (1 + (data.speedOffset || 0))
 
-          // Apply animation based on type
           switch (params.animationType) {
+            case 'rise': {
+              const riseProgress = (elapsed * effectiveSpeed * riseSpeed) % riseHeight
+              particle.position.x =
+                data.initialX +
+                Math.sin(elapsed * 0.45 + (data.driftPhase || 0)) *
+                  (data.driftAmplitude || 0)
+              particle.position.z =
+                data.initialZ +
+                Math.cos(elapsed * 0.35 + (data.driftPhase || 0)) *
+                  (data.driftAmplitude || 0)
+              particle.position.y = data.initialY + riseProgress
+              particle.scale.set(baseScale.x, baseScale.y, baseScale.z)
+              break
+            }
+            case 'explode': {
+              const progress = (elapsed * effectiveSpeed) % params.lifetime
+              const normalized = Math.min(1, progress / params.lifetime)
+              const expansion = 1 + normalized * explosionSpread
+              particle.position.x = data.initialX * expansion
+              particle.position.y = data.initialY * expansion
+              particle.position.z = data.initialZ * expansion
+              const shrink = Math.max(0.12, 1 - normalized * explosionShrink)
+              particle.scale.set(
+                baseScale.x * shrink,
+                baseScale.y * shrink,
+                baseScale.z * shrink
+              )
+              break
+            }
+            case 'spiral': {
+              const angle =
+                elapsed * effectiveSpeed + data.orbitOffset + (data.swirlPhase || 0)
+              const taper = 1 - Math.min(1, elapsed / params.lifetime) * spiralTaper
+              const radius = data.radius * taper
+              particle.position.x = Math.cos(angle) * radius
+              particle.position.z = Math.sin(angle) * radius
+              particle.position.y =
+                data.initialY +
+                ((angle % (Math.PI * 2)) / (Math.PI * 2)) * spiralHeight
+              particle.scale.set(baseScale.x, baseScale.y, baseScale.z)
+              break
+            }
+            case 'pulse': {
+              const pulse =
+                Math.sin(elapsed * effectiveSpeed * 2 + data.orbitOffset) * 0.5 + 0.5
+              const scaleFactor = pulseBase + pulse * pulseRange
+              particle.scale.set(
+                baseScale.x * scaleFactor,
+                baseScale.y * scaleFactor,
+                baseScale.z * scaleFactor
+              )
+              particle.position.x =
+                data.initialX +
+                Math.sin(elapsed * 0.3 + (data.driftPhase || 0)) *
+                  (data.driftAmplitude || 0)
+              particle.position.z =
+                data.initialZ +
+                Math.cos(elapsed * 0.3 + (data.driftPhase || 0)) *
+                  (data.driftAmplitude || 0)
+              particle.position.y = data.initialY
+              break
+            }
             case 'orbit':
-              particle.position.x = Math.cos(elapsed * params.particleSpeed + i) * userData.radius
-              particle.position.z = Math.sin(elapsed * params.particleSpeed + i) * userData.radius
-              particle.position.y = userData.initialY + Math.sin(elapsed * 2 + i) * 0.2
+            default: {
+              const orbitAngle = elapsed * effectiveSpeed + data.orbitOffset
+              particle.position.x = Math.cos(orbitAngle) * data.radius
+              particle.position.z = Math.sin(orbitAngle) * data.radius
+              particle.position.y =
+                data.initialY +
+                Math.sin(
+                  elapsed * (data.floatFrequency || 2) + data.orbitOffset
+                ) *
+                  (data.floatStrength || 0)
+              particle.position.x +=
+                Math.sin(elapsed * 0.25 + (data.driftPhase || 0)) *
+                (data.driftAmplitude || 0)
+              particle.position.z +=
+                Math.cos(elapsed * 0.25 + (data.driftPhase || 0)) *
+                (data.driftAmplitude || 0)
+              particle.scale.set(baseScale.x, baseScale.y, baseScale.z)
               break
-            case 'rise':
-              particle.position.y = userData.initialY + elapsed * params.particleSpeed * 0.5
-              if (particle.position.y > userData.initialY + 3) {
-                particle.position.y = userData.initialY
-              }
-              break
-            case 'explode':
-              const progress = (elapsed * params.particleSpeed) % params.lifetime
-              const scale = 1 + progress / params.lifetime
-              particle.position.x = userData.initialX * scale
-              particle.position.y = userData.initialY * scale
-              particle.position.z = userData.initialZ * scale
-              particle.scale.setScalar(Math.max(0.1, 1 - progress / params.lifetime))
-              break
-            case 'spiral':
-              const angle = elapsed * params.particleSpeed + i
-              particle.position.x = Math.cos(angle) * userData.radius
-              particle.position.z = Math.sin(angle) * userData.radius
-              particle.position.y = userData.initialY + (angle % (Math.PI * 2)) * 0.3
-              break
-            case 'pulse':
-              const pulse = Math.sin(elapsed * params.particleSpeed * 2 + i) * 0.5 + 0.5
-              particle.scale.setScalar(params.particleSize * (0.5 + pulse))
-              break
+            }
           }
 
-          // Auto-rotate
-          particle.rotation.x += delta * 2
-          particle.rotation.y += delta * 2
+          particle.rotation.x += delta * (data.spinRates?.x || 0)
+          particle.rotation.y += delta * (data.spinRates?.y || 0)
+          particle.rotation.z += delta * (data.spinRates?.z || 0)
         })
 
-        // Auto-rotate entire system
         if (autoRotate.current) {
-          particleSystemRef.current.rotation.y += delta * 0.3
+          particleSystemRef.current.rotation.y +=
+            delta * (style.systemRotationSpeed ?? 0.35)
         }
       }
 
-      renderer.render(scene, camera)
+      if (sceneRef.current && cameraRef.current && rendererRef.current) {
+        rendererRef.current.render(sceneRef.current, cameraRef.current)
+      }
     }
+
     animate()
 
-    // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize)
       if (animationIdRef.current) {
@@ -188,103 +317,78 @@ const VFXViewer = ({ params }) => {
       if (rendererRef.current) {
         rendererRef.current.dispose()
       }
+      if (canvasRef.current) {
+        canvasRef.current.removeEventListener('mousedown', handleMouseDown)
+        canvasRef.current.removeEventListener('mousemove', handleMouseMove)
+        canvasRef.current.removeEventListener('mouseup', handleMouseUp)
+        canvasRef.current.removeEventListener('mouseleave', handleMouseUp)
+        canvasRef.current.removeEventListener('touchstart', handleTouchStart)
+        canvasRef.current.removeEventListener('touchmove', handleTouchMove)
+        canvasRef.current.removeEventListener('touchend', handleTouchEnd)
+      }
     }
   }, [])
 
-  // Update particles when params change
   useEffect(() => {
     if (!sceneRef.current) return
 
-    // Remove old particle system
+    const blueprint = buildParticleSystemBlueprint(params)
+    const { particles, style } = blueprint
+
     if (particleSystemRef.current) {
-      sceneRef.current.remove(particleSystemRef.current)
-      particleSystemRef.current.children.forEach(child => {
-        if (child.geometry) child.geometry.dispose()
-        if (child.material) child.material.dispose()
-      })
+      const existing = particleSystemRef.current
+      sceneRef.current.remove(existing)
+      existing.children.forEach(child => disposeMaterial(child.material))
+      existing.clear()
     }
 
-    // Create new particle system
     const particleSystem = new THREE.Group()
+    particleSystem.userData.style = style
     particleSystemRef.current = particleSystem
     sceneRef.current.add(particleSystem)
 
-    // Create particles based on emission shape
-    const particles = []
-    for (let i = 0; i < params.particleCount; i++) {
-      let x, y, z
+    const geometry = getGeometryFromConfig(style.geometry)
 
-      switch (params.emissionShape) {
-        case 'sphere':
-          const theta = Math.random() * Math.PI * 2
-          const phi = Math.acos(2 * Math.random() - 1)
-          const radius = Math.random() * params.spread
-          x = radius * Math.sin(phi) * Math.cos(theta)
-          y = radius * Math.sin(phi) * Math.sin(theta)
-          z = radius * Math.cos(phi)
-          break
-        case 'cone':
-          const coneAngle = Math.random() * Math.PI * 2
-          const coneRadius = Math.random() * params.spread
-          const coneHeight = Math.random() * params.spread * 2
-          x = coneRadius * Math.cos(coneAngle)
-          y = coneHeight
-          z = coneRadius * Math.sin(coneAngle)
-          break
-        case 'ring':
-          const ringAngle = Math.random() * Math.PI * 2
-          const ringRadius = params.spread * (0.5 + Math.random() * 0.5)
-          x = ringRadius * Math.cos(ringAngle)
-          y = (Math.random() - 0.5) * 0.2
-          z = ringRadius * Math.sin(ringAngle)
-          break
-        case 'box':
-          x = (Math.random() - 0.5) * params.spread * 2
-          y = (Math.random() - 0.5) * params.spread * 2
-          z = (Math.random() - 0.5) * params.spread * 2
-          break
-        default:
-          x = y = z = 0
-      }
-
-      // Create particle geometry (voxel-style cube)
-      const geometry = new THREE.BoxGeometry(
-        params.particleSize,
-        params.particleSize,
-        params.particleSize
-      )
-
-      // Create glowing material
-      const color = new THREE.Color(
-        Math.random() > 0.5 ? params.primaryColor : params.secondaryColor
-      )
-      
-      const material = new THREE.MeshStandardMaterial({
-        color: color,
-        emissive: color,
-        emissiveIntensity: params.glowIntensity,
-        metalness: 0.3,
-        roughness: 0.4
-      })
-
+    particles.forEach(state => {
+      const material = createMaterialForParticle(style, state)
       const particle = new THREE.Mesh(geometry, material)
-      particle.position.set(x, y, z)
-      
-      // Store initial values for animation
+      particle.name = `Particle_${state.index}`
+      particle.position.set(
+        state.initialPosition.x,
+        state.initialPosition.y,
+        state.initialPosition.z
+      )
+      particle.scale.set(state.scale.x, state.scale.y, state.scale.z)
       particle.userData = {
-        initialX: x,
-        initialY: y,
-        initialZ: z,
-        radius: Math.sqrt(x * x + z * z),
-        angle: Math.atan2(z, x)
+        index: state.index,
+        radius: state.radius,
+        orbitOffset: state.orbitOffset,
+        floatStrength: state.floatStrength,
+        floatFrequency: state.floatFrequency,
+        initialX: state.initialPosition.x,
+        initialY: state.initialPosition.y,
+        initialZ: state.initialPosition.z,
+        baseScale: state.scale,
+        spinRates: state.spinRates,
+        speedOffset: state.speedOffset,
+        driftAmplitude: state.driftAmplitude,
+        driftPhase: state.driftPhase,
+        swirlPhase: state.swirlPhase
       }
-
       particleSystem.add(particle)
-      particles.push(particle)
-    }
+    })
 
     setParticleCount(particles.length)
 
+    return () => {
+      if (!particleSystemRef.current) return
+      sceneRef.current.remove(particleSystemRef.current)
+      particleSystemRef.current.children.forEach(child =>
+        disposeMaterial(child.material)
+      )
+      particleSystemRef.current.clear()
+      particleSystemRef.current = null
+    }
   }, [params])
 
   return (
@@ -305,4 +409,3 @@ const VFXViewer = ({ params }) => {
 }
 
 export default VFXViewer
-
