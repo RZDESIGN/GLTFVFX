@@ -1,0 +1,1645 @@
+<!-- Driver Selection Component - Full Screen with Three.js -->
+<div id="driver-selection-overlay" class="driver-selection-overlay">
+  <!-- Top tabs: Driver | Kart | Stats -->
+  <div class="player-top-tabs" id="driver-top-tabs">
+    <button class="player-top-tab" data-tab="driver" aria-selected="true">Driver</button>
+    <button class="player-top-tab" data-tab="kart" aria-selected="false">Kart</button>
+    <button class="player-top-tab" data-tab="stats" aria-selected="false">Stats</button>
+  </div>
+  
+  <!-- Three.js 3D Preview Container -->
+  <div id="driver-preview-container" class="driver-preview-container">
+    <canvas id="driver-preview-canvas"></canvas>
+  </div>
+  
+  <!-- Bottom Filmstrip Navigation -->
+  <div class="filmstrip-nav" id="driver-filmstrip-nav">
+    <button class="nav-arrow" id="driver-nav-left" aria-label="Previous driver">‹</button>
+    <div class="driver-filmstrip" id="driver-filmstrip" aria-label="Driver filmstrip" data-ui-scrollable="x"></div>
+    <button class="nav-arrow" id="driver-nav-right" aria-label="Next driver">›</button>
+  </div>
+      
+  <!-- Top-right header block -->
+  <div class="driver-header-block" id="driver-header-block">
+    <div class="big-driver-subheader" id="big-driver-subheader">Choose your driver</div>
+    <div class="big-driver-header" id="big-driver-header">Chicken</div>
+    <div class="driver-description" id="driver-description">Clucky and competitive! This feathered racer brings speed and determination.</div>
+  </div>
+      
+  <!-- Close Button -->
+  <button class="driver-selection-close" id="driver-selection-close">×</button>
+
+</div>
+
+<style>
+  .driver-selection-overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 10050 !important;
+    pointer-events: auto !important;
+    cursor: default !important;
+    display: none;
+    font-family: 'Fredoka', sans-serif;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    isolation: isolate;
+  }
+
+  /* Background on pseudo-element */
+  .driver-selection-overlay::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 40%, #F0E68C 0%, #FFD700 30%, #FFA500 70%, #FF8C00 100%);
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  /* Three.js Preview Container */
+  .driver-preview-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10015;
+  }
+
+  /* Bottom filmstrip container with side arrows */
+  .filmstrip-nav { 
+    position: absolute; 
+    left: 50%; 
+    bottom: clamp(12px, 2.6vh, 20px); 
+    transform: translateX(-50%); 
+    display: flex; 
+    align-items: center; 
+    gap: clamp(6px, min(1.8vw, 2.4vh), 10px); 
+    z-index: 10025; 
+  }
+  
+  .nav-arrow { 
+    width: clamp(30px, min(4vw, 6vh), 38px); 
+    height: clamp(30px, min(4vw, 6vh), 38px); 
+    border-radius: 50%; 
+    border: 2px solid rgba(255,255,255,0.6); 
+    background: rgba(255,255,255,0.35); 
+    color: #1f2937; 
+    font-size: clamp(18px, min(3.2vw, 5vh), 22px); 
+    font-weight: 800; 
+    box-shadow: 0 6px 16px rgba(0,0,0,0.15); 
+    cursor: pointer; 
+    pointer-events: auto; 
+    backdrop-filter: blur(4px); 
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease, border-color 0.2s ease; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    line-height: 1; 
+  }
+  
+  .nav-arrow:hover { 
+    transform: scale(1.05); 
+    box-shadow: 0 10px 22px rgba(0,0,0,0.22); 
+    background: rgba(255,255,255,0.5); 
+    border-color: rgba(255,255,255,0.85); 
+  }
+
+  /* Bottom filmstrip */
+  .driver-filmstrip { 
+    width: clamp(220px, min(80vw, 92vh), 920px); 
+    display: flex; 
+    gap: clamp(4px, min(2.4vw, 2.4vh), 10px); 
+    padding: clamp(3px, min(1.8vw, 1.8vh), 7px) clamp(5px, min(2.6vw, 2.6vh), 10px); 
+    background: rgba(255,255,255,0.20); 
+    border: 2px solid rgba(255,255,255,0.35); 
+    border-radius: clamp(10px, min(2.4vw, 2.4vh), 14px); 
+    box-shadow: 0 10px 22px rgba(0,0,0,0.14); 
+    pointer-events: auto; 
+    overflow-x: auto; 
+    overflow-y: hidden;
+    scrollbar-width: none; 
+    backdrop-filter: blur(6px); 
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pinch-zoom;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x proximity;
+  }
+  
+  .driver-filmstrip::-webkit-scrollbar { 
+    display: none; 
+  }
+  
+  .filmstrip-item { 
+    --filmstrip-size: clamp(56px, min(16vw, 18vh), 88px);
+    min-width: var(--filmstrip-size); 
+    max-width: var(--filmstrip-size); 
+    height: var(--filmstrip-size); 
+    position: relative; 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    justify-content: center; 
+    gap: 0; 
+    background: rgba(255,255,255,0.55); 
+    border: 2px solid rgba(0,0,0,0.06); 
+    border-radius: clamp(8px, min(2.2vw, 2.6vh), 12px); 
+    padding: clamp(3px, min(1.6vw, 1.6vh), 4px); 
+    cursor: pointer; 
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.2s ease, background 0.2s ease; 
+    overflow: hidden;
+    flex: 0 0 auto;
+    scroll-snap-align: center;
+  }
+  
+  .filmstrip-item:hover { 
+    transform: translateY(-2px); 
+    box-shadow: 0 8px 18px rgba(0,0,0,0.16); 
+    border-color: #FF8C00; 
+  }
+  
+  .filmstrip-item.selected { 
+    border-color: #FF8C00; 
+    box-shadow: 0 0 0 3px rgba(255,140,0,0.25); 
+    background: rgba(255,255,255,0.85); 
+  }
+  
+  .filmstrip-icon { 
+    font-size: 28px; 
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25)); 
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+  }
+  
+  .filmstrip-thumb { 
+    width: 100%; 
+    height: 100%; 
+    display: block; 
+    object-fit: contain;
+    pointer-events: none;
+  }
+  
+  .filmstrip-name { 
+    display: none; 
+  }
+
+  @media (max-width: 480px) {
+    #driver-filmstrip-nav {
+      bottom: clamp(10px, 3.2vh, 12px);
+    }
+  }
+
+  .driver-preview-container canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    cursor: grab;
+    pointer-events: auto;
+  }
+
+  .driver-selection-overlay.show {
+    display: block;
+    opacity: 1;
+  }
+
+  /* Close Button */
+  .driver-selection-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    background: #ff4757;
+    border: none;
+    color: white;
+    font-size: clamp(1.4rem, 1.8vw, 1.8rem);
+    cursor: pointer;
+    padding: 0;
+    width: min(40px, 4vw);
+    height: min(40px, 4vw);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.1s ease, background-color 0.1s ease, box-shadow 0.1s ease;
+    font-weight: bold;
+    line-height: 1;
+    box-shadow: 0 4px 12px rgba(255, 71, 87, 0.3);
+    z-index: 99999;
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+    pointer-events: auto;
+    user-select: none;
+    contain: layout style paint;
+  }
+
+  .driver-selection-close:hover {
+    background-color: #ff3742;
+    transform: translate3d(0, 0, 0) scale3d(1.05, 1.05, 1);
+    box-shadow: 0 6px 20px rgba(255, 71, 87, 0.5);
+  }
+
+  /* Top tabs */
+  .player-top-tabs {
+    position: fixed;
+    top: clamp(12px, min(4vh, 3vw), 20px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex;
+    gap: clamp(4px, min(1.8vw, 2.4vh), 8px);
+    padding: clamp(4px, min(2vw, 2.6vh), 6px);
+    background: rgba(255, 255, 255, 0.95);
+    border: 2px solid rgba(71, 85, 105, 0.15);
+    border-radius: clamp(10px, min(3vw, 3vh), 12px);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
+    z-index: 10030;
+    pointer-events: auto;
+  }
+
+  .player-top-tab {
+    padding: clamp(5px, min(2.4vw, 2.8vh), 8px) clamp(8px, min(3.2vw, 4vh), 12px);
+    border-radius: clamp(8px, min(2.6vw, 3vh), 10px);
+    border: 2px solid rgba(71, 85, 105, 0.15);
+    background: rgba(255, 255, 255, 0.98);
+    font-weight: 700;
+    font-size: clamp(11px, min(3vw, 3.4vh), 14px);
+    color: rgba(71, 85, 105, 0.9);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: 'Fredoka', sans-serif;
+  }
+
+  .player-top-tab[aria-selected="true"] {
+    border-color: rgba(255, 140, 0, 0.4);
+    box-shadow: 0 2px 10px rgba(255, 140, 0, 0.2);
+  }
+
+  /* Header block top-right */
+  .driver-header-block { 
+    position: absolute; 
+    top: clamp(56px, 8vh, 120px); 
+    right: clamp(12px, 2.6vw, 48px); 
+    display: flex; 
+    flex-direction: column; 
+    align-items: flex-end; 
+    gap: clamp(6px, 0.9vw, 12px); 
+    z-index: 10005; 
+    pointer-events: none; 
+    max-width: 40%;
+  }
+  
+  .big-driver-subheader { 
+    color: #ffffff; 
+    font-weight: 800; 
+    font-size: clamp(10px, 1.15vw, 16px); 
+    letter-spacing: clamp(1px, 0.18vw, 3px); 
+    text-transform: uppercase; 
+    opacity: 0.7; 
+    background: rgba(255,140,0,0.15); 
+    border: 2px solid rgba(255,140,0,0.35); 
+    padding: clamp(4px, 0.6vw, 8px) clamp(8px, 1vw, 12px); 
+    border-radius: clamp(8px, 1.2vw, 14px); 
+    backdrop-filter: blur(6px); 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+  }
+  
+  .big-driver-header { 
+    color: #ffffff; 
+    font-weight: 900; 
+    font-size: clamp(32px, 7.2vw, 100px); 
+    letter-spacing: 1px; 
+    text-transform: uppercase; 
+    text-shadow: 0 10px 30px rgba(0,0,0,0.45); 
+    line-height: 0.95; 
+    text-align: right; 
+  }
+  
+  .driver-description {
+    color: #ffffff; 
+    font-weight: 600; 
+    font-size: clamp(11px, 1.3vw, 18px); 
+    line-height: 1.4;
+    text-align: right; 
+    background: rgba(0,0,0,0.2); 
+    padding: clamp(8px, 1vw, 16px); 
+    border-radius: clamp(8px, 1.2vw, 14px); 
+    backdrop-filter: blur(8px); 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); 
+    border: 2px solid rgba(255,255,255,0.2);
+  }
+
+  @media (max-width: 768px) { 
+    .driver-header-block {
+      max-width: 50%;
+    }
+  }
+  
+  @media (max-width: 480px) { 
+    .player-top-tabs { top: clamp(10px, 4vh, 14px); }
+    .driver-selection-close { 
+      width: 28px; 
+      height: 28px; 
+      font-size: 18px; 
+    }
+    .driver-header-block {
+      max-width: 60%;
+    }
+  }
+</style>
+
+<script>
+  // Driver Selection Component
+  function disposeWithUIThree(object) {
+    try { if (window.UIThree && UIThree.disposeObject) { UIThree.disposeObject(object); } } catch {}
+  }
+
+  window.DriverSelection = {
+    isOpen: false,
+    allowAutoOpen: false,
+    isInitialized: false,
+    currentSelection: {
+      driverModel: 'player'
+    },
+    
+    // Three.js scene components
+    scene: null,
+    camera: null,
+    renderer: null,
+    currentDriverModel: null,
+    animationId: null,
+    mixer: null,
+    clock: null,
+      loadedModels: {},
+      _resizeRafPending: false,
+      _onWindowResizeBound: null,
+      usingSharedRenderer: false,
+      _waitingForSharedRenderer: false, // prevents reinitializing while another UI owns the shared renderer
+      _dragHandlersSetup: false,
+      // Event listener references for proper cleanup
+      _dragHandlers: null,
+    
+    // Interactive rotation state
+    isDragging: false,
+    lastMouseX: 0,
+    dragRotationSpeed: 0.01,
+    autoRotationEnabled: true,
+    
+    // Locker preview state (for default player model with cosmetics)
+    lockerAnchors: {},
+    lockerItems: {},
+    lockerCache: {},
+    _pendingLockerItems: null,
+    lastLockerItems: null, // Persistent storage for locker items
+    
+    // Player animation state (for default player model)
+    playerIdleUpperAction: null,
+    playerIdleLowerAction: null,
+    playerOtherIdleAction: null,
+    faceExpressionAction: null,
+    desiredFaceExpressionName: null,
+    
+    // Driver model data - includes default player model + CPU models
+    driverModels: {
+      player: { name: 'Player', icon: '👤', description: 'The standard player model. Classic and versatile racer with balanced performance.', modelUri: 'models/players/player.gltf', unlocked: true },
+      hammy: { name: 'Hammy', icon: '🐹', description: 'Adorable hamster racer with unmatched cuteness! Ready to roll through the competition.', modelUri: 'models/players/hammy.gltf', isPlayerModel: true, animation: 'idle', unlocked: false },
+      chicken: { name: 'Chicken', icon: '🐔', description: 'Clucky and competitive! This feathered racer brings speed and determination.', modelUri: 'models/npcs/chicken.gltf', unlocked: false },
+      cow: { name: 'Cow', icon: '🐮', description: 'Moo-ve over! A steady and reliable racer with impressive stamina.', modelUri: 'models/npcs/cow.gltf', unlocked: false },
+      donkey: { name: 'Donkey', icon: '🫏', description: 'Stubborn and strong-willed. Never gives up on the track!', modelUri: 'models/npcs/donkey.gltf', unlocked: false },
+      horse: { name: 'Horse', icon: '🐴', description: 'Galloping grace combined with racing prowess. A natural competitor.', modelUri: 'models/npcs/horse.gltf', unlocked: false },
+      ocelot: { name: 'Ocelot', icon: '🐆', description: 'Swift and agile like a jungle cat. Perfect for tight corners.', modelUri: 'models/npcs/ocelot.gltf', unlocked: false },
+      pig: { name: 'Pig', icon: '🐷', description: 'Don\'t underestimate this porker! Surprisingly fast and nimble.', modelUri: 'models/npcs/pig.gltf', unlocked: false },
+      rabbit: { name: 'Rabbit', icon: '🐰', description: 'Lightning-fast reflexes make this bunny a formidable racer.', modelUri: 'models/npcs/rabbit.gltf', unlocked: false },
+      sheep: { name: 'Sheep', icon: '🐑', description: 'Fluffy but fierce! This woolly racer is no pushover.', modelUri: 'models/npcs/sheep.gltf', unlocked: false },
+      spider: { name: 'Spider', icon: '🕷️', description: 'Eight legs of racing fury! Web-slinging speed on the track.', modelUri: 'models/npcs/spider.gltf', unlocked: false },
+      bat: { name: 'Bat', icon: '🦇', description: 'Nocturnal ninja of the racetrack. Excellent night vision!', modelUri: 'models/npcs/bat.gltf', unlocked: false }
+    },
+    
+    // Initialize the component
+    initialize: function() {
+      if (this.isInitialized) return;
+      this.isInitialized = true;
+      this.setupEventListeners();
+      this.buildFilmstrip();
+      this.setupDataListener();
+      // Load from localStorage for immediate UI display (server data will override when available)
+      this.loadCurrentSelection();
+      // Initialize header for initial selection
+      try { 
+        this.selectDriverModel(this.currentSelection.driverModel, true); 
+      } catch {}
+    },
+    
+    // Set up Three.js scene
+    setupThreeJS: function() {
+      if (this.renderer && this.scene && this.camera) {
+        this.handleResize();
+        return;
+      }
+
+      const container = document.getElementById('driver-preview-container');
+      const canvas = document.getElementById('driver-preview-canvas');
+      if (!container || !canvas) { console.error('❌ Three.js container not found!'); return; }
+
+      const THREE = hytopia.three;
+      const rect = container.getBoundingClientRect();
+      this.scene = new THREE.Scene();
+
+      this.camera = new THREE.PerspectiveCamera(
+        45,
+        (rect.width || window.innerWidth) / (rect.height || window.innerHeight),
+        0.1,
+        1000
+      );
+      this.camera.position.set(0, 1.5, 4);
+      this.camera.lookAt(0, 0.8, 0);
+
+      const isIOS = (function(){ try { const ua = navigator.userAgent || ''; return /iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && 'ontouchend' in document); } catch(e){ return false; } })();
+      const wantsShared = !!(window.UIThree && UIThree.getPreviewRenderer);
+      const _candidateRenderer = wantsShared
+        ? UIThree.getPreviewRenderer('driver-selection', canvas, { alpha: true, antialias: true, enableShadows: true })
+        : null;
+      this.renderer = _candidateRenderer || new THREE.WebGLRenderer({ canvas, alpha: true, antialias: !isIOS });
+      this.usingSharedRenderer = !!_candidateRenderer;
+
+      const pixelRatio = isIOS ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+      this.renderer.setSize(rect.width || window.innerWidth, rect.height || window.innerHeight);
+      this.renderer.setPixelRatio(pixelRatio);
+      this.renderer.setClearColor(0x000000, 0);
+      this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.type = isIOS ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+
+      // Enhanced lighting
+      const hemiLight = new THREE.HemisphereLight(0xffffff, 0x666666, 0.6);
+      hemiLight.position.set(0, 20, 0);
+      this.scene.add(hemiLight);
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+      this.scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      directionalLight.position.set(5, 10, 7);
+      directionalLight.castShadow = true;
+      const smSize = isIOS ? 1024 : 2048;
+      directionalLight.shadow.mapSize.width = smSize;
+      directionalLight.shadow.mapSize.height = smSize;
+      directionalLight.shadow.bias = -0.0005;
+      const d = 10;
+      directionalLight.shadow.camera.left = -d;
+      directionalLight.shadow.camera.right = d;
+      directionalLight.shadow.camera.top = d;
+      directionalLight.shadow.camera.bottom = -d;
+      directionalLight.target.position.set(0, 0, 0);
+      this.scene.add(directionalLight.target);
+      this.scene.add(directionalLight);
+
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+      fillLight.position.set(-5, 5, -7);
+      this.scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0xffffff, 0.4);
+      rimLight.position.set(-3, 8, -5);
+      this.scene.add(rimLight);
+
+      const frontLight = new THREE.DirectionalLight(0xffffff, 0.5);
+      frontLight.position.set(0, 3, 8);
+      this.scene.add(frontLight);
+
+      // Shadow-receiving ground plane
+      try {
+        const groundGeometry = new THREE.PlaneGeometry(30, 30);
+        const groundMaterial = new THREE.ShadowMaterial({ opacity: 0.25 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = 0;
+        ground.receiveShadow = true;
+        this.scene.add(ground);
+        this._shadowGround = ground;
+      } catch (e) { console.warn('⚠️ Failed to create shadow ground:', e); }
+
+      this.clock = new THREE.Clock();
+      if (!this._onWindowResizeBound) {
+        this._onWindowResizeBound = () => this.onWindowResize();
+      }
+      window.addEventListener('resize', this._onWindowResizeBound);
+      this._waitingForSharedRenderer = false;
+      this.setupDragInteraction();
+    },
+
+    teardownThreeJS: function() {
+      try {
+        if (this._onWindowResizeBound) {
+          window.removeEventListener('resize', this._onWindowResizeBound);
+        }
+      } catch {}
+      this._onWindowResizeBound = null;
+      this._resizeRafPending = false;
+
+      // Remove drag event listeners
+      try {
+        if (this._dragHandlers) {
+          const { canvas, handlers } = this._dragHandlers;
+          if (canvas && handlers) {
+            canvas.removeEventListener('mousedown', handlers.mousedown);
+            canvas.removeEventListener('mousemove', handlers.mousemove);
+            canvas.removeEventListener('mouseup', handlers.mouseup);
+            canvas.removeEventListener('mouseleave', handlers.mouseleave);
+            canvas.removeEventListener('touchstart', handlers.touchstart);
+            canvas.removeEventListener('touchmove', handlers.touchmove);
+            canvas.removeEventListener('touchend', handlers.touchend);
+            canvas.removeEventListener('contextmenu', handlers.contextmenu);
+          }
+          this._dragHandlers = null;
+          this._dragHandlersSetup = false;
+        }
+      } catch {}
+
+      // Proactively dispose current model and ground to free GPU resources
+      try {
+        if (this.scene && this.currentDriverModel) {
+          this.scene.remove(this.currentDriverModel);
+          try { disposeWithUIThree(this.currentDriverModel); } catch {}
+        }
+        if (this.scene && this._shadowGround) {
+          this.scene.remove(this._shadowGround);
+          try { disposeWithUIThree(this._shadowGround); } catch {}
+        }
+      } catch {}
+
+      // Dispose all cached models to prevent memory leaks
+      try {
+        Object.keys(this.loadedModels).forEach((key) => {
+          const cached = this.loadedModels[key];
+          if (cached && cached.model) {
+            try { disposeWithUIThree(cached.model); } catch {}
+          }
+        });
+        this.loadedModels = {};
+      } catch {}
+
+      // Dispose locker cache to prevent memory leaks
+      try {
+        Object.keys(this.lockerCache).forEach((uri) => {
+          const cached = this.lockerCache[uri];
+          if (cached && cached.model) {
+            try { disposeWithUIThree(cached.model); } catch {}
+          }
+        });
+        this.lockerCache = {};
+      } catch {}
+
+      if (this.renderer) {
+        try {
+          if (this.usingSharedRenderer && window.UIThree && UIThree.releasePreviewRenderer) {
+            UIThree.releasePreviewRenderer('driver-selection');
+          } else if (this.renderer.dispose) {
+            this.renderer.dispose();
+          }
+        } catch {}
+      }
+
+      try {
+        if (this.scene && this.currentDriverModel) {
+          this.scene.remove(this.currentDriverModel);
+        }
+      } catch {}
+
+      this.renderer = null;
+      this.scene = null;
+      this.camera = null;
+      this.clock = null;
+      this.mixer = null;
+      this.currentDriverModel = null;
+      this._shadowGround = null;
+      this.usingSharedRenderer = false;
+      this.isDragging = false;
+      this.autoRotationEnabled = true;
+    },
+    
+    // Handle window resize
+    handleResize: function() {
+      if (!this.camera || !this.renderer) return;
+      const container = document.getElementById('driver-preview-container');
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      this.camera.aspect = (rect.width || window.innerWidth) / (rect.height || window.innerHeight);
+      this.camera.updateProjectionMatrix();
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      this.renderer.setSize(rect.width || window.innerWidth, rect.height || window.innerHeight);
+      this.renderer.setPixelRatio(pixelRatio);
+    },
+    
+    // rAF-throttled resize handler
+    onWindowResize: function() {
+      if (this._resizeRafPending) return;
+      this._resizeRafPending = true;
+      const raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : (cb) => setTimeout(cb, 16);
+      raf(() => {
+        this._resizeRafPending = false;
+        this.handleResize();
+      });
+    },
+    
+    // Setup drag interaction for model rotation
+    setupDragInteraction: function() {
+      const canvas = document.getElementById('driver-preview-canvas');
+      if (!canvas || this._dragHandlersSetup) return;
+      this._dragHandlersSetup = true;
+
+      // Store handler references for cleanup
+      const handlers = {
+        mousedown: (e) => this.onDragStart(e, e.clientX),
+        mousemove: (e) => this.onDragMove(e, e.clientX),
+        mouseup: (e) => this.onDragEnd(e),
+        mouseleave: (e) => this.onDragEnd(e),
+        touchstart: (e) => {
+          e.preventDefault();
+          if (e.touches.length === 1) {
+            this.onDragStart(e, e.touches[0].clientX);
+          }
+        },
+        touchmove: (e) => {
+          e.preventDefault();
+          if (e.touches.length === 1) {
+            this.onDragMove(e, e.touches[0].clientX);
+          }
+        },
+        touchend: (e) => {
+          e.preventDefault();
+          this.onDragEnd(e);
+        },
+        contextmenu: (e) => e.preventDefault()
+      };
+      
+      this._dragHandlers = { canvas, handlers };
+
+      canvas.addEventListener('mousedown', handlers.mousedown);
+      canvas.addEventListener('mousemove', handlers.mousemove);
+      canvas.addEventListener('mouseup', handlers.mouseup);
+      canvas.addEventListener('mouseleave', handlers.mouseleave);
+      
+      canvas.addEventListener('touchstart', handlers.touchstart, { passive: false });
+      canvas.addEventListener('touchmove', handlers.touchmove, { passive: false });
+      canvas.addEventListener('touchend', handlers.touchend);
+      
+      canvas.addEventListener('contextmenu', handlers.contextmenu);
+      try { canvas.style.cursor = 'grab'; } catch {}
+    },
+    
+    onDragStart: function(e, clientX) {
+      e.stopPropagation();
+      this.isDragging = true;
+      this.lastMouseX = clientX;
+      this.autoRotationEnabled = false;
+      
+      const canvas = document.getElementById('driver-preview-canvas');
+      if (canvas) {
+        canvas.style.cursor = 'grabbing';
+      }
+    },
+    
+    onDragMove: function(e, clientX) {
+      if (!this.isDragging) return;
+      e.stopPropagation();
+      
+      const deltaX = clientX - this.lastMouseX;
+      const rotationDelta = deltaX * this.dragRotationSpeed;
+      
+      if (this.currentDriverModel) {
+        this.currentDriverModel.rotation.y += rotationDelta;
+      }
+      
+      this.lastMouseX = clientX;
+    },
+    
+    onDragEnd: function(e) {
+      if (!this.isDragging) return;
+      e.stopPropagation();
+      
+      this.isDragging = false;
+      this.autoRotationEnabled = true;
+      
+      const canvas = document.getElementById('driver-preview-canvas');
+      if (canvas) {
+        canvas.style.cursor = 'grab';
+      }
+    },
+    
+    // Set up event listeners
+    setupEventListeners: function() {
+      const closeBtn = document.getElementById('driver-selection-close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => { 
+          e.preventDefault(); 
+          e.stopPropagation(); 
+          this.hideDriverSelection(); 
+        });
+      }
+      // Top tabs switching
+      const topTabs = document.getElementById('driver-top-tabs');
+      if (topTabs) {
+        topTabs.addEventListener('click', (e) => {
+          const btn = e.target && e.target.closest ? e.target.closest('.player-top-tab') : null;
+          if (!btn) return;
+          const tab = btn.getAttribute('data-tab');
+          if (tab === 'driver') { this.setActiveTopTabs('driver'); return; }
+          if (window.PlayerUI && typeof window.PlayerUI.show === 'function') {
+            window.PlayerUI.show(tab);
+          }
+        });
+      }
+      
+      const navLeft = document.getElementById('driver-nav-left');
+      if (navLeft) {
+        navLeft.addEventListener('click', (e) => { 
+          e.preventDefault(); 
+          e.stopPropagation(); 
+          this.prevDriverModel(); 
+        });
+      }
+      
+      const navRight = document.getElementById('driver-nav-right');
+      if (navRight) {
+        navRight.addEventListener('click', (e) => { 
+          e.preventDefault(); 
+          e.stopPropagation(); 
+          this.nextDriverModel(); 
+        });
+      }
+      
+      document.addEventListener('keydown', (e) => { 
+        if (e.key === 'Escape' && this.isOpen) { 
+          this.hideDriverSelection(); 
+        } 
+      });
+      
+      const overlay = document.getElementById('driver-selection-overlay');
+      if (overlay) { 
+        overlay.addEventListener('click', (e) => { 
+          if (e.target === overlay) { 
+            this.hideDriverSelection(); 
+          } 
+        }); 
+      }
+    },
+    
+    // Set active top tab visual state
+    setActiveTopTabs: function(current) {
+      try {
+        document.querySelectorAll('#driver-top-tabs .player-top-tab').forEach((btn) => {
+          const isActive = btn.getAttribute('data-tab') === current;
+          btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+      } catch {}
+    },
+    
+    // Build bottom filmstrip from available driver models
+    buildFilmstrip: function() {
+      const strip = document.getElementById('driver-filmstrip');
+      if (!strip) return;
+      strip.innerHTML = '';
+      const order = this.getDriverModelOrder();
+      order.forEach((key, idx) => {
+        const meta = this.driverModels[key];
+        if (!meta) return;
+        if (meta.unlocked === false) return; // hide locked drivers
+        const item = document.createElement('div');
+        item.className = 'filmstrip-item';
+        item.dataset.driver = key;
+        const thumbUrl = `{{CDN_ASSETS_URL}}/ui/driver-thumbnails/${key}.png`;
+        const img = document.createElement('img');
+        img.className = 'filmstrip-thumb';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        img.alt = meta.name || key;
+        img.src = thumbUrl;
+        item.appendChild(img);
+
+        const icon = document.createElement('div');
+        icon.className = 'filmstrip-icon';
+        icon.textContent = meta.icon || '👤';
+        item.appendChild(icon);
+
+        const hideIcon = () => { icon.style.display = 'none'; };
+        const showIcon = () => { icon.style.display = 'flex'; };
+        hideIcon();
+        img.addEventListener('load', hideIcon, { once: true });
+        img.addEventListener('error', () => {
+          img.style.display = 'none';
+          showIcon();
+        }, { once: true });
+        
+        item.title = meta.name;
+        item.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.selectDriverModel(key);
+          this.scrollFilmstripToSelected();
+        });
+        strip.appendChild(item);
+      });
+      // Add "Buy more" item
+      try {
+        const buy = document.createElement('div');
+        buy.className = 'filmstrip-item';
+        buy.title = 'Buy more drivers';
+        buy.style.display = 'flex';
+        buy.style.alignItems = 'center';
+        buy.style.justifyContent = 'center';
+        buy.style.fontWeight = '800';
+        buy.style.fontSize = '14px';
+        buy.innerHTML = '🛒 Buy more';
+        buy.addEventListener('click', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          try {
+            if (window.ShopUI) {
+              window.ShopUI.openShop();
+              window.ShopUI.setTab('drivers');
+            } else if (typeof hytopia !== 'undefined') {
+              hytopia.sendData({ type: 'request-shop-catalog' });
+            }
+      } catch {}
+    });
+    strip.appendChild(buy);
+  } catch {}
+  this.updateFilmstripSelection();
+  this.bindFilmstripInteractions(strip);
+},
+
+    getDriverModelOrder: function() {
+      return Object.keys(this.driverModels);
+    },
+    
+    prevDriverModel: function() {
+      const order = this.getDriverModelOrder();
+      const idx = Math.max(0, order.indexOf(this.currentSelection.driverModel));
+      const nextIdx = (idx - 1 + order.length) % order.length;
+      this.selectDriverModel(order[nextIdx]);
+      this.scrollFilmstripToSelected();
+    },
+
+    nextDriverModel: function() {
+      const order = this.getDriverModelOrder();
+      const idx = Math.max(0, order.indexOf(this.currentSelection.driverModel));
+      const nextIdx = (idx + 1) % order.length;
+      this.selectDriverModel(order[nextIdx]);
+      this.scrollFilmstripToSelected();
+    },
+
+    updateFilmstripSelection: function() {
+      const strip = document.getElementById('driver-filmstrip');
+      if (!strip) return;
+      strip.querySelectorAll('.filmstrip-item').forEach((el) => el.classList.remove('selected'));
+      const active = strip.querySelector(`.filmstrip-item[data-driver="${this.currentSelection.driverModel}"]`);
+      if (active) active.classList.add('selected');
+    },
+
+    scrollFilmstripToSelected: function() {
+      const strip = document.getElementById('driver-filmstrip');
+      if (!strip) return;
+      const active = strip.querySelector(`.filmstrip-item[data-driver="${this.currentSelection.driverModel}"]`);
+      if (!active) return;
+      const containerRect = strip.getBoundingClientRect();
+      const itemRect = active.getBoundingClientRect();
+      const offset = (itemRect.left + itemRect.right) / 2 - (containerRect.left + containerRect.right) / 2;
+      strip.scrollBy({ left: offset, behavior: 'smooth' });
+    },
+
+    bindFilmstripInteractions: function(strip) {
+      if (!strip) return;
+      if (!strip.__wheelBound) {
+        strip.addEventListener('wheel', (evt) => {
+          if (Math.abs(evt.deltaY) <= Math.abs(evt.deltaX)) return;
+          evt.preventDefault();
+          strip.scrollLeft += evt.deltaY;
+        }, { passive: false });
+        strip.__wheelBound = true;
+      }
+      try { enableOverlayTouchScroll(strip); } catch {}
+    },
+    
+    // Listen for server driver updates and locker updates
+    setupDataListener: function() {
+      if (this._onDataBound) return;
+      this._onDataBound = true;
+      try {
+        if (typeof hytopia !== 'undefined' && hytopia.onData) {
+          hytopia.onData((payload) => {
+            const data = payload && payload.data ? payload.data : payload;
+            if (!data || !data.type) return;
+            
+            if (data.type === 'lockerUpdate' && Array.isArray(data.equippedItems)) {
+              const items = data.equippedItems;
+              // Always store locker items for later use
+              this.lastLockerItems = items;
+              if (!this.currentDriverModel) {
+                this._pendingLockerItems = items;
+              } else {
+                // Only apply locker items if showing the default player model
+                if (this.currentSelection.driverModel === 'player') {
+                  this.applyLockerUpdate(items);
+                }
+              }
+            }
+            
+            if (data.type === 'driver-selection-data' && data.currentSelection) {
+              const serverSelection = data.currentSelection;
+              try {
+                // Apply unlock filtering: only drivers provided are unlocked
+                if (Array.isArray(data.drivers)) {
+                  const allowedIds = new Set(data.drivers.map(d => d.id));
+                  Object.keys(this.driverModels).forEach((id) => {
+                    this.driverModels[id].unlocked = allowedIds.has(id);
+                  });
+                  this.buildFilmstrip();
+                }
+              } catch (e) { console.warn('⚠️ Failed to apply driver unlock filtering:', e); }
+              
+              if (serverSelection.driverModel) {
+                this.currentSelection.driverModel = serverSelection.driverModel;
+                this.selectDriverModel(serverSelection.driverModel, true);
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('⚠️ Failed to bind data listener:', err);
+      }
+    },
+    
+    // Load driver model (GLTF only)
+    loadDriverModel: function(driverType) {
+      if (!this.scene || !this.renderer) {
+        this.setupThreeJS();
+        if (!this.scene || !this.renderer) {
+          console.warn('⚠️ Driver preview unavailable - renderer not ready.');
+          return;
+        }
+      }
+      if (this.loadedModels[driverType]) { 
+        this.switchToDriverModel(driverType); 
+        return; 
+      }
+      
+      const GLTFLoader = hytopia.gltfLoader && hytopia.gltfLoader.GLTFLoader;
+      if (GLTFLoader) {
+        const loader = new GLTFLoader();
+        const modelPath = `{{CDN_ASSETS_URL}}/${this.driverModels[driverType].modelUri}`;
+        
+        loader.load(modelPath, (gltf) => {
+          const driverModel = gltf.scene;
+          driverModel.traverse((node) => { 
+            if (node.isMesh) { 
+              node.castShadow = true; 
+              node.receiveShadow = true; 
+            } 
+          });
+          
+          this.loadedModels[driverType] = { model: driverModel, gltf };
+          this.switchToDriverModel(driverType);
+        }, undefined, (error) => {
+          console.error('❌ GLTF driver load failed:', driverType, error);
+          // Show error notification to user
+          if (typeof window !== 'undefined' && window.Notifications && window.Notifications.show) {
+            window.Notifications.show(`Failed to load ${this.driverModels[driverType]?.name || driverType} model`, 'error');
+          }
+        });
+        return;
+      }
+      console.error('❌ GLTFLoader not available for driver:', driverType);
+    },
+    
+    // Switch to a loaded driver model
+    switchToDriverModel: function(driverType) {
+      if (!this.scene) {
+        console.error('❌ Driver preview scene not ready for:', driverType);
+        return;
+      }
+      if (!this.loadedModels[driverType]) { 
+        console.error('❌ Driver model not loaded:', driverType); 
+        return; 
+      }
+      
+      let preservedRotationY = 0;
+      if (this.currentDriverModel) {
+        preservedRotationY = this.currentDriverModel.rotation?.y || 0;
+        // Clear locker items from old model before removing it
+        this.clearLockerItems();
+        try { this.scene.remove(this.currentDriverModel); } catch {}
+        disposeWithUIThree(this.currentDriverModel);
+      }
+      
+      if (this.mixer) {
+        this.mixer.stopAllAction();
+        this.mixer = null;
+      }
+      
+      const { model, gltf } = this.loadedModels[driverType];
+      this.currentDriverModel = model.clone();
+      
+      // Apply scale - NPC models need to be smaller for preview
+      const driverMeta = this.driverModels[driverType];
+      const isPlayerModel = driverType === 'player' || (driverMeta && driverMeta.isPlayerModel);
+      const scale = isPlayerModel ? 1.0 : 0.7; // Scale down NPC models to 70%
+      this.currentDriverModel.scale.setScalar(scale);
+      
+      // Position model on ground
+      try {
+        const THREE = hytopia.three;
+        this.currentDriverModel.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(this.currentDriverModel);
+        const groundLift = -box.min.y;
+        this.currentDriverModel.position.y = isFinite(groundLift) ? groundLift : 0;
+      } catch { 
+        this.currentDriverModel.position.y = 0; 
+      }
+      
+      this.scene.add(this.currentDriverModel);
+      
+      if (preservedRotationY !== 0) {
+        this.currentDriverModel.rotation.y = preservedRotationY;
+      } else {
+        this.currentDriverModel.rotation.y = Math.PI;
+      }
+      
+      // Set up animations if available
+      if (gltf && gltf.animations && gltf.animations.length > 0) {
+        const THREE = hytopia.three;
+        this.mixer = new THREE.AnimationMixer(this.currentDriverModel);
+        
+        // For default player model, use sophisticated animation system
+        if (driverType === 'player') {
+          this.playPlayerIdleAnimations();
+          // Set smile expression for player model
+          try { 
+            this.desiredFaceExpressionName = 'expression-smile'; 
+            this.playFaceExpression(this.desiredFaceExpressionName, true); 
+          } catch {}
+        } else if (driverMeta && driverMeta.animation) {
+          // For custom player models with specified animation (like hammy)
+          const customAnim = gltf.animations.find(a => 
+            a.name === driverMeta.animation || 
+            a.name.toLowerCase() === driverMeta.animation.toLowerCase()
+          );
+          
+          if (customAnim) {
+            this.mixer.clipAction(customAnim).play();
+          } else {
+            console.warn(`⚠️ Animation "${driverMeta.animation}" not found for ${driverType}, using fallback`);
+            const fallbackAnim = gltf.animations.find(a => 
+              a.name.toLowerCase().includes('idle')
+            ) || gltf.animations[0];
+            if (fallbackAnim) {
+              this.mixer.clipAction(fallbackAnim).play();
+            }
+          }
+        } else {
+          // For NPC models, use simple idle animation
+          const idleAnim = gltf.animations.find(a => 
+            a.name.toLowerCase().includes('idle')
+          ) || gltf.animations[0];
+          
+          if (idleAnim) {
+            this.mixer.clipAction(idleAnim).play();
+          }
+        }
+      }
+      
+      // If loading default player model, build locker anchors and apply items
+      if (driverType === 'player') {
+        this.buildLockerAnchorsFromPlayer();
+        // Apply pending items first if available
+        if (this._pendingLockerItems) {
+          this.applyLockerUpdate(this._pendingLockerItems);
+          this._pendingLockerItems = null;
+        } else if (this.lastLockerItems) {
+          // Otherwise, reapply last known locker items when switching back to player
+          this.applyLockerUpdate(this.lastLockerItems);
+        }
+      }
+    },
+    
+    // Start animation loop
+    startAnimation: function() {
+      if (this.animationId) return;
+      if (!this.renderer || !this.scene || !this.camera) {
+        this.setupThreeJS();
+        if (this.scene && this.currentSelection && this.currentSelection.driverModel) {
+          this.loadDriverModel(this.currentSelection.driverModel);
+        }
+      }
+      const animate = () => {
+        if (!this.isOpen) { this.animationId = null; return; }
+        let currentOwner = null;
+        try { currentOwner = (window.UIThree && UIThree.getPreviewOwner && UIThree.getPreviewOwner()) || null; } catch {}
+        if (this._waitingForSharedRenderer && (!currentOwner || currentOwner === 'driver-selection')) {
+          this._waitingForSharedRenderer = false;
+        }
+        if (this.usingSharedRenderer) {
+          const ownsRenderer = currentOwner === 'driver-selection';
+          if (!ownsRenderer) {
+            if (!this._waitingForSharedRenderer) {
+              this._waitingForSharedRenderer = true;
+              this.teardownThreeJS();
+            }
+            this.animationId = requestAnimationFrame(animate);
+            return;
+          }
+          if (this._waitingForSharedRenderer && ownsRenderer) {
+            this._waitingForSharedRenderer = false;
+          }
+        }
+        if (!this.renderer || !this.scene || !this.camera) {
+          if (!this._waitingForSharedRenderer && (!this.usingSharedRenderer || !currentOwner || currentOwner === 'driver-selection')) {
+            this.setupThreeJS();
+            if (this.scene && this.currentSelection && this.currentSelection.driverModel) {
+              this.loadDriverModel(this.currentSelection.driverModel);
+            }
+          }
+          this.animationId = requestAnimationFrame(animate);
+          return;
+        }
+        // If a different UI owns the shared preview renderer, stop animating
+        try {
+          if (this.usingSharedRenderer && window.UIThree && UIThree.getPreviewOwner && UIThree.getPreviewOwner() !== 'driver-selection') {
+            try { if (window.UIThreeDebug) console.warn('[DriverSelection] Waiting for renderer ownership... current owner =', UIThree.getPreviewOwner()); } catch {}
+            this.animationId = requestAnimationFrame(animate);
+            return;
+          }
+        } catch {}
+        if (this.clock) {
+          const delta = this.clock.getDelta();
+          if (this.mixer) { 
+            this.mixer.update(delta); 
+          }
+        }
+        if (this.currentDriverModel && this.autoRotationEnabled && !this.isDragging) { 
+          this.currentDriverModel.rotation.y += 0.005; 
+        }
+        try {
+          if (this.renderer && this.scene && this.camera) { 
+            this.renderer.render(this.scene, this.camera); 
+          }
+        } catch (e) {
+          // Renderer may have been disposed externally; stop animating
+          try { if (window.UIThreeDebug) console.warn('[DriverSelection] Render failed - stopping loop', e); } catch {}
+          const wasShared = this.usingSharedRenderer;
+          try { this.teardownThreeJS(); } catch {}
+          if (wasShared) { this._waitingForSharedRenderer = true; }
+          this.animationId = requestAnimationFrame(animate);
+          return;
+        }
+        this.animationId = requestAnimationFrame(animate);
+      };
+      animate();
+    },
+    
+    // Stop animation loop
+    stopAnimation: function() {
+      if (this.animationId) { 
+        cancelAnimationFrame(this.animationId); 
+        this.animationId = null; 
+      }
+      this._waitingForSharedRenderer = false;
+      if (this.mixer) {
+        this.mixer.stopAllAction();
+      }
+    },
+    
+    // Show driver selection modal
+    showDriverSelection: function() {
+      if (!this.allowAutoOpen) { 
+        return; 
+      }
+      if (this.isOpen) { 
+        return; 
+      }
+      
+      const overlay = document.getElementById('driver-selection-overlay');
+      if (overlay) {
+        this.isOpen = true;
+        this.hideHUDElements();
+        try {
+          let released = false;
+          if (window.UIHelpers && typeof window.UIHelpers.releasePointerForUI === 'function') {
+            released = window.UIHelpers.releasePointerForUI() !== false;
+            if (window.UIHelpers.ensureBodyCursor) { window.UIHelpers.ensureBodyCursor('default'); }
+          } else if (window.UIPlatform && typeof window.UIPlatform.releasePointerForUI === 'function') {
+            released = window.UIPlatform.releasePointerForUI() !== false;
+            if (window.UIPlatform.ensureBodyCursor) { window.UIPlatform.ensureBodyCursor('default'); }
+          } else if (typeof hytopia !== 'undefined' && hytopia.lockPointer) {
+            hytopia.lockPointer(false, true);
+            released = true;
+          }
+        } catch (lockError) {
+          console.error('❌ Error releasing pointer lock:', lockError);
+        }
+        
+        // Request current driver selection from server
+        try { 
+          if (typeof hytopia !== 'undefined') { 
+            hytopia.sendData({ type: 'request-driver-selection-data' }); 
+          } 
+        } catch (e) { 
+          console.warn('⚠️ Failed to request driver selection data:', e); 
+          this.loadCurrentSelection();
+        }
+        
+        this.setupThreeJS();
+        this.loadDriverModel(this.currentSelection.driverModel);
+        this.startAnimation();
+        // Request locker state for default player model cosmetics
+        try { 
+          if (typeof hytopia !== 'undefined') { 
+            hytopia.sendData({ type: 'request-locker' }); 
+          } 
+        } catch (e) { 
+          console.warn('⚠️ Failed to request locker:', e); 
+        }
+        overlay.style.display = 'block'; 
+        overlay.offsetHeight; 
+        overlay.classList.add('show');
+        try { this.setActiveTopTabs('driver'); } catch {}
+      }
+    },
+
+    // Public function to open driver selection
+    openDriverSelection: function() {
+      if (this.isOpen) { 
+        return; 
+      }
+      this.allowAutoOpen = true; 
+      this.showDriverSelection(); 
+      this.allowAutoOpen = false;
+    },
+    
+    // Hide driver selection modal
+    hideDriverSelection: function(opts) {
+      if (!this.isOpen) { 
+        return; 
+      }
+      const options = opts || {};
+      this.isOpen = false;
+      const overlay = document.getElementById('driver-selection-overlay');
+      if (!overlay) return;
+      this.stopAnimation();
+      
+      this.isDragging = false;
+      this.autoRotationEnabled = true;
+      
+      if (this.currentDriverModel && this.scene) {
+        try { this.scene.remove(this.currentDriverModel); } catch {}
+        disposeWithUIThree(this.currentDriverModel);
+        this.currentDriverModel = null;
+      }
+      this.teardownThreeJS();
+      
+      overlay.classList.remove('show');
+      const finalize = () => {
+        try { overlay.style.display = 'none'; } catch {}
+        if (!options.skipHUD) {
+          this.showHUDElements();
+        }
+        if (!options.skipPointerLock) {
+          try {
+            let locked = false;
+            if (window.UIHelpers && typeof window.UIHelpers.requestPointerForGame === 'function') {
+              locked = window.UIHelpers.requestPointerForGame() !== false;
+            } else if (window.UIPlatform && typeof window.UIPlatform.requestPointerForGame === 'function') {
+              locked = window.UIPlatform.requestPointerForGame() !== false;
+            } else if (typeof hytopia !== 'undefined' && hytopia.lockPointer) {
+              hytopia.lockPointer(true);
+              locked = true;
+            }
+          } catch (lockError) {
+            console.error('❌ Error re-enabling pointer lock:', lockError);
+          }
+        }
+      };
+      const delay = options.immediate ? 0 : 300;
+      if (delay === 0) {
+        finalize();
+      } else {
+        setTimeout(finalize, delay);
+      }
+    },
+    
+    // Hide HUD elements
+    hideHUDElements: function() {},
+    
+    // Show HUD elements
+    showHUDElements: function() {},
+    
+    // Select driver model
+    selectDriverModel: function(driverType, skipServerUpdate = false) {
+      this.currentSelection.driverModel = driverType;
+      if (this.isOpen) { 
+        this.loadDriverModel(driverType); 
+      }
+      this.applyDriverChanges(skipServerUpdate);
+      this.updateFilmstripSelection();
+      
+      // Update header text and description
+      try {
+        const headerEl = document.getElementById('big-driver-header');
+        const descEl = document.getElementById('driver-description');
+        if (headerEl) {
+          const name = this.driverModels[driverType]?.name || '';
+          headerEl.textContent = name;
+        }
+        if (descEl) {
+          const desc = this.driverModels[driverType]?.description || '';
+          descEl.textContent = desc;
+        }
+      } catch {}
+    },
+
+    // Apply driver changes in real-time
+    applyDriverChanges: function(skipServerUpdate = false) {
+      if (!skipServerUpdate && typeof hytopia !== 'undefined') { 
+        hytopia.sendData({ 
+          type: 'driver-selection-change', 
+          driverModel: this.currentSelection.driverModel 
+        }); 
+      }
+      localStorage.setItem('selectedDriver', JSON.stringify(this.currentSelection));
+    },
+    
+    // Load current selection from localStorage
+    loadCurrentSelection: function() {
+      try { 
+        const saved = localStorage.getItem('selectedDriver'); 
+        if (saved) { 
+          const selection = JSON.parse(saved); 
+          this.currentSelection = { 
+            driverModel: selection.driverModel || 'player' 
+          }; 
+        } 
+      } catch (error) { 
+        console.warn('⚠️ Failed to load saved driver selection:', error); 
+        this.currentSelection = { driverModel: 'player' }; 
+      }
+      this.selectDriverModel(this.currentSelection.driverModel, true);
+    },
+    
+    // Get current selection
+    getCurrentSelection: function() { 
+      return { ...this.currentSelection }; 
+    },
+    
+    // ==== Player Animation Helpers ====
+    
+    // Play the player's idle animations (upper+lower if available)
+    playPlayerIdleAnimations: function() {
+      try {
+        if (!this.mixer || !this.loadedModels[this.currentSelection.driverModel]) return;
+        const gltf = this.loadedModels[this.currentSelection.driverModel].gltf;
+        const THREE = hytopia.three;
+
+        // Stop any existing actions
+        try { this.mixer.stopAllAction(); } catch {}
+        this.playerIdleUpperAction = null;
+        this.playerIdleLowerAction = null;
+        this.playerOtherIdleAction = null;
+
+        const idleUpper = gltf.animations.find(a => a.name === 'idle-upper' || a.name.toLowerCase() === 'idle-upper' || a.name.includes('idle-upper') || a.name.includes('idle_upper'));
+        const idleLower = gltf.animations.find(a => a.name === 'idle-lower' || a.name.toLowerCase() === 'idle-lower' || a.name.includes('idle-lower') || a.name.includes('idle_lower'));
+
+        if (idleUpper && idleLower) {
+          this.playerIdleUpperAction = this.mixer.clipAction(idleUpper);
+          this.playerIdleLowerAction = this.mixer.clipAction(idleLower);
+          this.playerIdleUpperAction.reset().play();
+          this.playerIdleLowerAction.reset().play();
+        } else {
+          const idleAnim = gltf.animations.find(a => a.name.toLowerCase().includes('idle') || a.name.toLowerCase().includes('sit') || a.name.toLowerCase().includes('drive')) || gltf.animations[0];
+          if (idleAnim) {
+            this.playerOtherIdleAction = this.mixer.clipAction(idleAnim);
+            this.playerOtherIdleAction.reset().play();
+          }
+        }
+        // Reapply desired face expression if any
+        try { if (this.desiredFaceExpressionName) { this.playFaceExpression(this.desiredFaceExpressionName, true); } } catch {}
+      } catch (e) { console.warn('⚠️ Failed to start idle animations:', e); }
+    },
+    
+    // Play or maintain a face expression animation (e.g., "expression-smile")
+    playFaceExpression: function(expressionName, keepIfSame = false) {
+      try {
+        if (!this.mixer || !this.loadedModels[this.currentSelection.driverModel]) return;
+        const THREE = hytopia.three;
+        const gltf = this.loadedModels[this.currentSelection.driverModel].gltf;
+        const clip = gltf.animations.find(a => a.name === expressionName || a.name.toLowerCase() === expressionName.toLowerCase());
+        if (!clip) { console.warn('⚠️ Face expression not found:', expressionName); return; }
+        if (keepIfSame && this.faceExpressionAction && this.faceExpressionAction.getClip && this.faceExpressionAction.getClip() === clip) {
+          return;
+        }
+        // Stop previous face expression if changing
+        try { if (this.faceExpressionAction) { this.faceExpressionAction.stop(); } } catch {}
+        const action = this.mixer.clipAction(clip);
+        // Loop to keep expression active and blend in softly
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        action.clampWhenFinished = true;
+        action.enabled = true;
+        action.reset().fadeIn(0.2).play();
+        this.faceExpressionAction = action;
+      } catch (e) { console.warn('⚠️ Failed to play face expression:', expressionName, e); }
+    },
+    
+    // ==== Locker helpers (for default player model cosmetics) ====
+    buildLockerAnchorsFromPlayer: function() {
+      this.lockerAnchors = {};
+      if (!this.currentDriverModel) return;
+      const known = [
+        'back-anchor','head-anchor','arm-left-anchor','arm-right-anchor','hand-left-anchor','hand-right-anchor',
+        'hand-left-shield-anchor','hand-right-weapon-anchor','torso-anchor','leg-left-anchor','leg-right-anchor',
+        'foot-left-anchor','foot-right-anchor'
+      ];
+      this.currentDriverModel.traverse((node) => {
+        if (!node.name) return;
+        const lname = node.name.toLowerCase();
+        const dashed = lname.replace(/_/g,'-');
+        const underscored = lname.replace(/-/g,'_');
+        if (dashed.includes('anchor') || known.includes(dashed)) {
+          this.lockerAnchors[dashed] = node;
+          this.lockerAnchors[underscored] = node;
+        }
+      });
+    },
+    
+    clearLockerItems: function() {
+      Object.keys(this.lockerItems).forEach((key) => {
+        const obj = this.lockerItems[key];
+        if (obj && obj.parent) obj.parent.remove(obj);
+        // Ensure detached cosmetic items are fully released
+        try { disposeWithUIThree(obj); } catch {}
+      });
+      this.lockerItems = {};
+    },
+    
+    applyLockerUpdate: function(items) {
+      this.clearLockerItems();
+      if (!Array.isArray(items)) return;
+      items.forEach((it) => { this.loadAndAttachLockerItem(it); });
+    },
+    
+    resolveLockerItem: function(item) {
+      const slotToAnchor = {
+        head: 'head-anchor',
+        back: 'back-anchor',
+        torso: 'torso-anchor',
+        chest: 'torso-anchor',
+        hand_right: 'hand-right-anchor',
+        right_hand: 'hand-right-anchor',
+        right_item: 'hand-right-anchor',
+        hand_left: 'hand-left-anchor',
+        left_hand: 'hand-left-anchor',
+        left_item: 'hand-left-anchor',
+        arm_right: 'arm-right-anchor',
+        arm_left: 'arm-left-anchor',
+        leg_right: 'leg-right-anchor',
+        leg_left: 'leg-left-anchor',
+        foot_right: 'foot-right-anchor',
+        foot_left: 'foot-left-anchor'
+      };
+      const cdnPrefix = '{{CDN_ASSETS_URL}}/';
+      if (typeof item === 'string') {
+        return { id: item, uri: `${cdnPrefix}models/items/${item}.gltf`, anchor: this.guessAnchorForItem(item) };
+      }
+      const id = item.id || item.itemId || item.modelUri || item.uri || Math.random().toString(36).slice(2);
+      let uri = item.modelUri || item.uri || `${cdnPrefix}models/items/${id}.gltf`;
+      if (!/^https?:\/\//i.test(uri) && !uri.startsWith('{{CDN_ASSETS_URL}}')) {
+        uri = uri.startsWith('/') ? `${cdnPrefix}${uri.slice(1)}` : `${cdnPrefix}${uri}`;
+      }
+      const slot = (item.slot || '').toLowerCase();
+      const mappedAnchor = slotToAnchor[slot];
+      const anchor = item.anchor || mappedAnchor || this.guessAnchorForItem(id);
+      return { id, uri, anchor };
+    },
+    
+    guessAnchorForItem: function(idOrName) {
+      const s = (idOrName || '').toLowerCase();
+      if (s.includes('sword') || s.includes('axe') || s.includes('wand') || s.includes('mace')) return 'hand-right-anchor';
+      if (s.includes('shield')) return 'hand-left-anchor';
+      if (s.includes('helmet') || s.includes('crown') || s.includes('head')) return 'head-anchor';
+      if (s.includes('cape') || s.includes('back')) return 'back-anchor';
+      if (s.includes('chest') || s.includes('armor') || s.includes('torso')) return 'torso-anchor';
+      return 'hand-right-anchor';
+    },
+    
+    findAnchorNode: function(anchorName) {
+      if (!this.currentDriverModel) return null;
+      if (!anchorName) return null;
+      const key = anchorName.toLowerCase();
+      const dashedKey = key.replace(/_/g,'-');
+      const underscoredKey = key.replace(/-/g,'_');
+      if (this.lockerAnchors[dashedKey]) return this.lockerAnchors[dashedKey];
+      if (this.lockerAnchors[underscoredKey]) return this.lockerAnchors[underscoredKey];
+      let found = null;
+      this.currentDriverModel.traverse((node) => {
+        if (!found && node.name) {
+          const lname = node.name.toLowerCase();
+          if (lname === key || lname === dashedKey || lname === underscoredKey) found = node;
+        }
+      });
+      if (!found) {
+        this.currentDriverModel.traverse((node) => {
+          if (!found && node.name) {
+            const lname = node.name.toLowerCase();
+            if (lname.includes('anchor')) {
+              const token = dashedKey.split('-')[0];
+              if (lname.includes(token)) found = node;
+            }
+          }
+        });
+      }
+      if (found) {
+        this.lockerAnchors[dashedKey] = found;
+        this.lockerAnchors[underscoredKey] = found;
+      }
+      return found;
+    },
+    
+    loadAndAttachLockerItem: function(item) {
+      if (!this.currentDriverModel) return;
+      const GLTFLoader = hytopia.gltfLoader && hytopia.gltfLoader.GLTFLoader;
+      const normalized = this.resolveLockerItem(item);
+      const { id, uri, anchor } = normalized;
+      const anchorNode = this.findAnchorNode(anchor);
+      if (!anchorNode) { console.warn('⚠️ Anchor not found for item:', id, anchor); return; }
+      
+      if (this.lockerCache[uri]) {
+        const inst = this.lockerCache[uri].model.clone(true);
+        try {
+          inst.name = id;
+          inst.matrixAutoUpdate = false;
+          inst.position.set(0,0,0);
+          inst.quaternion.set(0,0,0,1);
+          inst.scale.set(1,1,1);
+          inst.traverse((n) => { if (n && n.isObject3D) { n.frustumCulled = false; } });
+          inst.updateMatrix();
+        } catch {}
+        anchorNode.add(inst);
+        this.lockerItems[id] = inst;
+        return;
+      }
+      
+      if (!GLTFLoader) { console.warn('⚠️ GLTFLoader unavailable, cannot load locker item:', id); return; }
+      const loader = new GLTFLoader();
+      loader.load(uri, (gltf) => {
+        const obj = gltf.scene;
+        obj.traverse((n) => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } });
+        this.lockerCache[uri] = { model: obj };
+        const inst = obj.clone(true);
+        try {
+          inst.name = id;
+          inst.matrixAutoUpdate = false;
+          inst.position.set(0,0,0);
+          inst.quaternion.set(0,0,0,1);
+          inst.scale.set(1,1,1);
+          inst.traverse((n) => { if (n && n.isObject3D) { n.frustumCulled = false; } });
+          inst.updateMatrix();
+        } catch {}
+        anchorNode.add(inst);
+        this.lockerItems[id] = inst;
+      }, undefined, (err) => {
+        console.warn('⚠️ Failed to load locker item:', id, uri, err);
+      });
+    }
+  };
+  
+  // Export functions
+  window.DriverSelectionFunctions = {
+    openDriverSelection: function() { 
+      if (window.DriverSelection) { 
+        window.DriverSelection.openDriverSelection(); 
+      } 
+    },
+    hideDriverSelection: function() { 
+      if (window.DriverSelection) { 
+        window.DriverSelection.hideDriverSelection(); 
+      } 
+    },
+    get isOpen() { 
+      return window.DriverSelection ? window.DriverSelection.isOpen : false; 
+    }
+  };
+  
+  // Initialize when component loads
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => { 
+        if (window.DriverSelection) { 
+          window.DriverSelection.initialize(); 
+        } 
+      });
+    } else {
+      if (window.DriverSelection) { 
+        window.DriverSelection.initialize(); 
+      }
+    }
+  }
+  
+</script>
