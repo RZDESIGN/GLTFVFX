@@ -39,6 +39,11 @@ function App() {
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
+    
+    // Show helpful message
+    setTimeout(() => {
+      alert('✨ GLTF template exported!\n\n⚠️ This is a JSON template for reference only.\n\nFor production use:\n✅ Use pre-made files in /public/examples/\n✅ OR recreate your design in Blockbench/Blender\n\nExported templates lack binary geometry data needed for game engines.')
+    }, 100)
   }
 
   const handleRandomize = () => {

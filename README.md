@@ -128,14 +128,36 @@ src/
 
 ## Exporting to HYTOPIA
 
-The exported GLTF files can be used directly in HYTOPIA games:
+**Important**: This tool is designed for **previewing and designing VFX effects in real-time**. The exported GLTF files are templates for reference only.
+
+### For Production-Ready VFX:
+
+#### Option 1: Use Pre-Made Examples ⭐ (Recommended)
+The `/public/examples/` folder contains **18 production-ready GLTF VFX files**:
+- `fire-particle.gltf`, `gas-explode.gltf`, `ice-aoe.gltf`, etc.
+- Fully validated with complete binary data and animations
+- Ready to use in HYTOPIA games!
+
+#### Option 2: Create Custom VFX in 3D Tools
+1. **Design here**: Use this web app to preview effect parameters and colors
+2. **Create in Blockbench**: Recreate your design in [Blockbench](https://www.blockbench.net/) or Blender
+3. **Export properly**: Use these tools to generate production GLTFs with valid binary data
+
+> **Note**: Exported files from this tool are JSON templates without proper binary geometry data. They're great for sharing designs but won't work in engines without proper 3D modeling tool export.
+
+### Example: Load VFX in HYTOPIA
 
 ```javascript
-// Example: Load VFX in HYTOPIA
+// Load a VFX effect
 const vfxModel = await hytopia.world.createModel({
-  modelUri: 'path/to/your/vfx-effect.gltf',
+  modelUri: 'public/examples/fire-particle.gltf',
   position: { x: 0, y: 0, z: 0 }
 })
+
+// Play the animation
+if (vfxModel.animations && vfxModel.animations.length > 0) {
+  vfxModel.playAnimation(vfxModel.animations[0], { loop: true })
+}
 ```
 
 ## Contributing
