@@ -1598,6 +1598,167 @@ function createEnergyBeamEffect(group, config) {
   return [clip]
 }
 
+function createLargeSpiderWebEffect(group, config) {
+  const { primary, secondary, accent } = createVoxelMaterials(config)
+  const root = new THREE.Group()
+  root.name = 'large_spider_web_root'
+  group.add(root)
+
+  const rings = new THREE.Group()
+  rings.name = 'spider_web_rings'
+  root.add(rings)
+
+  const spokes = new THREE.Group()
+  spokes.name = 'spider_web_spokes'
+  root.add(spokes)
+
+  const baseSize = Math.max(0.06, config.size)
+  const ringCount = clampCount(Math.round(4 + config.spread), 4, 8)
+  const radiusStep = 0.6 + config.spread * 0.6
+
+  for (let i = 0; i < ringCount; i++) {
+    const ring = new THREE.Group()
+    ring.name = `spider_web_ring_${i}`
+    const radius = radiusStep * (1 + i * 0.5)
+    const segments = clampCount(Math.round(config.particleCount / ringCount), 24, 80)
+
+    for (let j = 0; j < segments; j++) {
+      const angle = (j / segments) * TWO_PI
+      const voxel = createVoxel(i % 2 === 0 ? secondary : primary, {
+        scale: [baseSize * 0.4, baseSize * 0.2, baseSize * 0.4],
+        position: [Math.cos(angle) * radius, 0, Math.sin(angle) * radius],
+        name: `spider_web_ring_voxel_${i}_${j}`,
+      })
+      ring.add(voxel)
+    }
+
+    rings.add(ring)
+  }
+
+  const spokeCount = 16
+  for (let i = 0; i < spokeCount; i++) {
+    const angle = (i / spokeCount) * TWO_PI
+    const spoke = new THREE.Group()
+    spoke.name = `spider_web_spoke_${i}`
+    spoke.rotation.y = angle
+
+    const sections = ringCount * 2
+    for (let j = 0; j < sections; j++) {
+      const length = baseSize * 1.2
+      const voxel = createVoxel(j % 3 === 0 ? accent : primary, {
+        scale: [length, baseSize * 0.2, baseSize * 0.5],
+        position: [0, 0, baseSize * 0.8 + j * 0.4],
+        name: `spider_web_spoke_voxel_${i}_${j}`,
+      })
+      spoke.add(voxel)
+    }
+
+    spokes.add(spoke)
+  }
+
+  const duration = Math.max(3, config.lifetime)
+  const tracks = []
+
+  tracks.push(new THREE.VectorKeyframeTrack(
+    `${rings.name}.scale`,
+    [0, duration * 0.5, duration],
+    [
+      0.9, 0.9, 0.9,
+      1.15, 1.15, 1.15,
+      0.9, 0.9, 0.9,
+    ]
+  ))
+
+  tracks.push(new THREE.VectorKeyframeTrack(
+    `${spokes.name}.scale`,
+    [0, duration * 0.5, duration],
+    [
+      0.9, 0.9, 0.9,
+      1.1, 1.1, 1.1,
+      0.9, 0.9, 0.9,
+    ]
+  ))
+
+  tracks.push(createYRotationTrack(
+    root.name,
+    [0, duration],
+    [0, TWO_PI * 0.15]
+  ))
+
+  const clip = new THREE.AnimationClip('spider_web_pulse', duration, tracks)
+  clip.optimize()
+  return [clip]
+}
+
+function createSpiderWebEffect(group, config) {
+  const tuned = {
+    ...config,
+    particleCount: Math.max(config.particleCount, 60),
+    spread: Math.max(config.spread, 1),
+  }
+  return createLargeSpiderWebEffect(group, tuned)
+}
+
+function createStoneEruptionEffect(group, config) {
+  const { primary, secondary, accent } = createVoxelMaterials(config)
+  const root = new THREE.Group()
+  root.name = 'stone_eruption_root'
+  group.add(root)
+
+  const columns = clampCount(Math.round(6 + config.spread * 2), 6, 14)
+  const baseSize = Math.max(0.12, config.size * 1.3)
+
+  for (let i = 0; i < columns; i++) {
+    const column = new THREE.Group()
+    column.name = `stone_column_${i}`
+    const angle = (i / columns) * TWO_PI
+    const radius = 0.6 + config.spread * 0.5
+    column.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius)
+
+    const segments = 4 + Math.floor(config.lifetime)
+    for (let j = 0; j < segments; j++) {
+      const voxel = createVoxel(j === 0 ? accent : (j % 2 === 0 ? primary : secondary), {
+        scale: [baseSize * rand(0.7, 1.2), baseSize * 1.6, baseSize * rand(0.7, 1.2)],
+        position: [rand(-0.2, 0.2), j * baseSize * 1.1, rand(-0.2, 0.2)],
+        name: `stone_column_voxel_${i}_${j}`,
+      })
+      column.add(voxel)
+    }
+
+    root.add(column)
+  }
+
+  const duration = Math.max(3, config.lifetime)
+  const tracks = []
+
+  root.children.forEach((column, index) => {
+    const rise = baseSize * (5 + index * 0.3)
+    tracks.push(createPositionTrack(
+      column.name,
+      [0, duration * 0.5, duration],
+      [
+        { x: column.position.x, y: 0, z: column.position.z },
+        { x: column.position.x * 1.1, y: rise, z: column.position.z * 1.1 },
+        { x: column.position.x * 0.9, y: 0, z: column.position.z * 0.9 },
+      ]
+    ))
+
+    tracks.push(new THREE.VectorKeyframeTrack(
+      `${column.name}.scale`,
+      [0, duration * 0.5, duration],
+      [
+        0.6, 0.6, 0.6,
+        1.4, 1.6, 1.4,
+        0.6, 0.6, 0.6,
+      ]
+    ))
+  })
+
+  const clip = new THREE.AnimationClip('stone_eruption', duration, tracks)
+  clip.optimize()
+  return [clip]
+}
+
 function createVoxelMaterials(config) {
   const primaryColor = new THREE.Color(config.color)
   const secondaryColor = new THREE.Color(config.secondaryColor)
