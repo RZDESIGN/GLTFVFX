@@ -10,12 +10,14 @@ const effectTypes = [
   { id: 'sparkles', name: 'Sparkles', icon: '⭐' },
   { id: 'smoke', name: 'Smoke', icon: '💨' },
   { id: 'energy-beam', name: 'Energy Beam', icon: '⚡' },
+  { id: 'rainbow', name: 'Rainbow', icon: '🌈' },
 ]
 
 const emissionShapes = [
   { id: 'sphere', name: 'Sphere' },
   { id: 'cone', name: 'Cone' },
   { id: 'ring', name: 'Ring' },
+  { id: 'disc', name: 'Disc' },
   { id: 'box', name: 'Box' },
 ]
 
@@ -31,6 +33,48 @@ const particleShapes = PARTICLE_SHAPE_OPTIONS
 
 const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
   const activeParticleShape = params.particleShape || 'style'
+  const ensureVector = (target) => target || { x: 0, y: 0, z: 0 }
+  const directionMode = params.motionDirectionMode || 'outwards'
+  const arcEnabled = !!params.useArcEmitter
+
+  const parseNumber = (value, fallback = 0) => {
+    const parsed = parseFloat(value)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+  const radToDeg = (rad, fallback) => {
+    const source = Number.isFinite(rad) ? rad : fallback
+    return Number(((source * 180) / Math.PI).toFixed(1))
+  }
+  const degToRad = (deg) => (deg * Math.PI) / 180
+
+  const fallbackArcStart = Math.PI * 0.1
+  const fallbackArcEnd = Math.PI * 0.9
+
+  const arcStartDeg = radToDeg(params.arcStartAngle, fallbackArcStart)
+  const arcEndDeg = radToDeg(params.arcEndAngle, fallbackArcEnd)
+  const currentArcRadius = Number.isFinite(params.arcRadius) ? params.arcRadius : 3
+  const currentArcThickness = Number.isFinite(params.arcThickness) ? params.arcThickness : 0.12
+  const currentArcHeight = Number.isFinite(params.arcHeightOffset) ? params.arcHeightOffset : 0
+  const currentArcSpeed = Number.isFinite(params.arcFlowSpeed) ? params.arcFlowSpeed : 1
+  const arcFlowMode = params.arcFlowMode || 'continuous'
+
+  const handleArcStartChange = (degValue) => {
+    const clamped = Math.min(Math.max(degValue, 0), 179)
+    onParamChange('arcStartAngle', degToRad(clamped))
+    if (clamped >= arcEndDeg) {
+      const nextEnd = Math.min(clamped + 1, 180)
+      onParamChange('arcEndAngle', degToRad(nextEnd))
+    }
+  }
+
+  const handleArcEndChange = (degValue) => {
+    const clamped = Math.min(Math.max(degValue, 1), 180)
+    onParamChange('arcEndAngle', degToRad(clamped))
+    if (clamped <= arcStartDeg) {
+      const nextStart = Math.max(clamped - 1, 0)
+      onParamChange('arcStartAngle', degToRad(nextStart))
+    }
+  }
 
   return (
     <div className="generator-panel">
@@ -241,6 +285,243 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
             </button>
           ))}
         </div>
+        <div className="control-group">
+          <label className="control-label">
+            <span>Surface Only</span>
+            <span className="control-value">{params.emissionSurfaceOnly ? 'Enabled' : 'Disabled'}</span>
+          </label>
+          <label className="toggle-input">
+            <input
+              type="checkbox"
+              checked={params.emissionSurfaceOnly}
+              onChange={(e) => onParamChange('emissionSurfaceOnly', e.target.checked)}
+            />
+            <span className="toggle-display" />
+          </label>
+        </div>
+        <div className="control-group">
+          <label className="control-label">
+            <span>Emitter Offset</span>
+          </label>
+          <div className="vector-input">
+            {['x', 'y', 'z'].map(axis => (
+              <div key={axis} className="vector-field">
+                <span>{axis.toUpperCase()}</span>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={ensureVector(params.emissionOffset)[axis]}
+                  onChange={(e) => {
+                    const base = ensureVector(params.emissionOffset)
+                    const next = parseFloat(e.target.value)
+                    onParamChange('emissionOffset', {
+                      ...base,
+                      [axis]: Number.isFinite(next) ? next : 0
+                    })
+                  }}
+                  className="control-input"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Motion */}
+      <div className="panel-section">
+        <h3 className="section-title">
+          <span>💨</span>
+          Motion
+        </h3>
+        <div className="control-group">
+          <label className="control-label">
+            <span>Direction Mode</span>
+          </label>
+          <select
+            value={directionMode}
+            onChange={(e) => onParamChange('motionDirectionMode', e.target.value)}
+            className="control-input"
+          >
+            <option value="outwards">Outwards</option>
+            <option value="inwards">Inwards</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        {directionMode === 'custom' && (
+          <div className="control-group">
+            <label className="control-label">
+              <span>Custom Direction</span>
+            </label>
+            <div className="vector-input">
+              {['x', 'y', 'z'].map(axis => (
+                <div key={axis} className="vector-field">
+                  <span>{axis.toUpperCase()}</span>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={ensureVector(params.motionDirection)[axis]}
+                    onChange={(e) => {
+                      const base = ensureVector(params.motionDirection)
+                      const next = parseFloat(e.target.value)
+                      onParamChange('motionDirection', {
+                        ...base,
+                        [axis]: Number.isFinite(next) ? next : 0
+                      })
+                    }}
+                    className="control-input"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="control-group">
+          <label className="control-label">
+            <span>Acceleration</span>
+          </label>
+          <div className="vector-input">
+            {['x', 'y', 'z'].map(axis => (
+              <div key={axis} className="vector-field">
+                <span>{axis.toUpperCase()}</span>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={ensureVector(params.motionAcceleration)[axis]}
+                  onChange={(e) => {
+                    const base = ensureVector(params.motionAcceleration)
+                    const next = parseFloat(e.target.value)
+                    onParamChange('motionAcceleration', {
+                      ...base,
+                      [axis]: Number.isFinite(next) ? next : 0
+                    })
+                  }}
+                  className="control-input"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Arc / Ribbon */}
+      <div className="panel-section">
+        <h3 className="section-title">
+          <span>🌈</span>
+          Arc / Ribbon
+        </h3>
+        <div className="control-group">
+          <label className="control-label">
+            <span>Enable Arc Emitter</span>
+            <span className="control-value">{arcEnabled ? 'On' : 'Off'}</span>
+          </label>
+          <label className="toggle-input">
+            <input
+              type="checkbox"
+              checked={arcEnabled}
+              onChange={(e) => onParamChange('useArcEmitter', e.target.checked)}
+            />
+            <span className="toggle-display" />
+          </label>
+        </div>
+        {arcEnabled && (
+          <>
+            <div className="control-group">
+              <label className="control-label">
+                <span>Arc Radius</span>
+              </label>
+              <input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={currentArcRadius}
+                onChange={(e) => onParamChange('arcRadius', Math.max(0.1, parseNumber(e.target.value, currentArcRadius)))}
+                className="control-input inline-input"
+              />
+            </div>
+            <div className="control-group">
+              <label className="control-label">
+                <span>Thickness</span>
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={currentArcThickness}
+                onChange={(e) => onParamChange('arcThickness', Math.max(0.01, parseNumber(e.target.value, currentArcThickness)))}
+                className="control-input inline-input"
+              />
+            </div>
+            <div className="control-group">
+              <label className="control-label">
+                <span>Height Offset</span>
+              </label>
+              <input
+                type="number"
+                step="0.05"
+                value={currentArcHeight}
+                onChange={(e) => onParamChange('arcHeightOffset', parseNumber(e.target.value, currentArcHeight))}
+                className="control-input inline-input"
+              />
+            </div>
+            <div className="control-group">
+              <label className="control-label">
+                <span>Angles (°)</span>
+              </label>
+              <div className="vector-input">
+                <div className="vector-field">
+                  <span>Start</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="180"
+                    step="1"
+                    value={arcStartDeg}
+                    onChange={(e) => handleArcStartChange(parseNumber(e.target.value, arcStartDeg))}
+                    className="control-input inline-input"
+                  />
+                </div>
+                <div className="vector-field">
+                  <span>End</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    step="1"
+                    value={arcEndDeg}
+                    onChange={(e) => handleArcEndChange(parseNumber(e.target.value, arcEndDeg))}
+                    className="control-input inline-input"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="control-group">
+              <label className="control-label">
+                <span>Flow Mode</span>
+              </label>
+              <select
+                value={arcFlowMode}
+                onChange={(e) => onParamChange('arcFlowMode', e.target.value)}
+                className="control-input"
+              >
+                <option value="continuous">Continuous</option>
+                <option value="burst">Burst Loop</option>
+              </select>
+            </div>
+            <div className="control-group">
+              <label className="control-label">
+                <span>Flow Speed</span>
+              </label>
+              <input
+                type="number"
+                min="0.05"
+                step="0.05"
+                value={currentArcSpeed}
+                onChange={(e) => onParamChange('arcFlowSpeed', Math.max(0.05, parseNumber(e.target.value, currentArcSpeed)))}
+                className="control-input inline-input"
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Animation Type */}

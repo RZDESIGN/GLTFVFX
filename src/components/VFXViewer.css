@@ -2,7 +2,7 @@
   flex: 1;
   position: relative;
   overflow: hidden;
-  background: radial-gradient(ellipse at center, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.5) 100%);
+  background: radial-gradient(ellipse at center, rgba(88, 88, 96, 0.18) 0%, rgba(30, 30, 36, 0.6) 55%, rgba(15, 15, 18, 0.95) 100%);
 }
 
 .vfx-canvas {
@@ -20,11 +20,12 @@
   position: absolute;
   bottom: 1rem;
   left: 1rem;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(10px);
+  background: rgba(24, 24, 28, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: saturate(120%) blur(10px);
   padding: 0.75rem 1rem;
   border-radius: 8px;
-  color: white;
+  color: #e5e7eb;
   font-size: 0.875rem;
   font-weight: 500;
   display: flex;
@@ -51,6 +52,12 @@
 }
 
 @media (max-width: 768px) {
+  .vfx-viewer {
+    height: 52vh;
+    min-height: 320px;
+    flex: 0 0 auto;
+  }
+
   .vfx-info {
     font-size: 0.75rem;
     padding: 0.5rem 0.75rem;

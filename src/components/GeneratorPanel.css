@@ -1,9 +1,9 @@
 .generator-panel {
   width: 100%;
   max-width: 400px;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(20px);
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  backdrop-filter: none;
+  border-left: none;
   padding: 2rem;
   overflow-y: auto;
   display: flex;
@@ -219,6 +219,80 @@
 
 .effect-icon {
   font-size: 1.5rem;
+}
+
+.toggle-input {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 48px;
+  height: 24px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.15);
+  transition: background 0.2s ease;
+  cursor: pointer;
+}
+
+.toggle-input input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-display {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 24px;
+  background: transparent;
+}
+
+.toggle-display::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.toggle-input input:checked + .toggle-display {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.toggle-input input:checked + .toggle-display::after {
+  transform: translateX(24px);
+  background: white;
+}
+
+.vector-input {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.vector-field {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.8rem;
+}
+
+.vector-field input {
+  width: 80px;
+}
+
+.inline-input {
+  max-width: 120px;
+}
+
+.vector-field input.inline-input {
+  width: 100%;
 }
 
 @media (max-width: 768px) {

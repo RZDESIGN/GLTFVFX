@@ -7,6 +7,8 @@ const geometryCache = new Map()
 
 const tempQuatA = new THREE.Quaternion()
 const tempQuatB = new THREE.Quaternion()
+const tempColorVec = new THREE.Vector3()
+const tempVec3A = new THREE.Vector3()
 
 const getGeometryKey = (geometryConfig = {}) => JSON.stringify(geometryConfig)
 
@@ -237,13 +239,45 @@ const VFXViewer = ({ params }) => {
     previewGroupRef.current = previewGroup
     scene.add(previewGroup)
 
-    const gridHelper = new THREE.GridHelper(6, 12, 0x555555, 0x333333)
-    gridHelper.material.opacity = 0.25
+    const gridHelper = new THREE.GridHelper(6, 12, 0xdddddd, 0xaaaaaa)
+    gridHelper.material.opacity = 0.35
     gridHelper.material.transparent = true
     previewGroup.add(gridHelper)
 
     const axesHelper = new THREE.AxesHelper(2.5)
     previewGroup.add(axesHelper)
+
+    const updateSceneOffset = () => {
+      if (!canvasRef.current || !cameraRef.current || !rendererRef.current || !previewGroupRef.current) return
+      const canvas = rendererRef.current.domElement
+      const cssWidth = canvas.clientWidth || parent.clientWidth
+      const cssHeight = canvas.clientHeight || parent.clientHeight
+      if (!cssWidth || !cssHeight) return
+
+      let overlayWidth = 0
+      const settings = document.querySelector('.settings-card')
+      if (settings) {
+        const style = window.getComputedStyle(settings)
+        if (style.position === 'fixed' || style.position === 'sticky') {
+          overlayWidth = settings.offsetWidth || 0
+        }
+      }
+
+      // If overlay takes most of the width (mobile layout), don't offset
+      if (overlayWidth >= cssWidth * 0.6) {
+        previewGroupRef.current.position.x = 0
+        return
+      }
+
+      const fov = cameraRef.current.fov * (Math.PI / 180)
+      // Distance from camera to scene origin
+      tempVec3A.set(0, 0, 0)
+      const distance = cameraRef.current.position.distanceTo(tempVec3A)
+      const worldWidthAtDepth = 2 * Math.tan(fov / 2) * distance * (cssWidth / cssHeight)
+      const worldUnitsPerPx = worldWidthAtDepth / cssWidth
+      const desiredPxOffset = overlayWidth * 0.5 + 12 // half overlay + padding
+      previewGroupRef.current.position.x = -desiredPxOffset * worldUnitsPerPx
+    }
 
     const handleResize = () => {
       if (!canvasRef.current || !cameraRef.current || !rendererRef.current) return
@@ -252,6 +286,7 @@ const VFXViewer = ({ params }) => {
       cameraRef.current.aspect = width / height
       cameraRef.current.updateProjectionMatrix()
       rendererRef.current.setSize(width, height)
+      updateSceneOffset()
     }
     window.addEventListener('resize', handleResize)
 
@@ -280,7 +315,9 @@ const VFXViewer = ({ params }) => {
     const handleWheel = (event) => {
       if (!cameraRef.current) return
       zoomDistance.current = Math.max(2, Math.min(14, zoomDistance.current + event.deltaY * 0.01))
-      cameraRef.current.position.set(0, 0, zoomDistance.current)
+      const { x, y } = cameraRef.current.position
+      cameraRef.current.position.set(x, y, zoomDistance.current)
+      cameraRef.current.lookAt(0, 0, 0)
     }
 
     canvasRef.current.addEventListener('mousedown', handleMouseDown)
@@ -317,6 +354,9 @@ const VFXViewer = ({ params }) => {
     canvasRef.current.addEventListener('touchmove', handleTouchMove)
     canvasRef.current.addEventListener('touchend', handleTouchEnd)
 
+    // Initial offset to compensate for right settings overlay
+    updateSceneOffset()
+
     const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate)
       const delta = clockRef.current.getDelta()
@@ -342,6 +382,16 @@ const VFXViewer = ({ params }) => {
           sampleVector3(times, keyframes.positions, playbackTime, particle.position)
           sampleQuaternion(times, keyframes.rotations, playbackTime, particle.quaternion)
           sampleVector3(times, keyframes.scales, playbackTime, particle.scale)
+
+          if (keyframes.colors && particle.material) {
+            sampleVector3(times, keyframes.colors, playbackTime, tempColorVec)
+            particle.material.color.setRGB(tempColorVec.x, tempColorVec.y, tempColorVec.z)
+            particle.material.emissive.setRGB(tempColorVec.x, tempColorVec.y, tempColorVec.z)
+          }
+
+          if (particle.userData.emissiveIntensity !== undefined && particle.material) {
+            particle.material.emissiveIntensity = particle.userData.emissiveIntensity
+          }
         })
 
         
@@ -426,8 +476,11 @@ const VFXViewer = ({ params }) => {
 
       particle.userData = {
         index: state.index,
-        keyframes: state.keyframes
+        keyframes: state.keyframes,
+        emissiveIntensity: state.emissiveIntensity
       }
+
+      particle.material.emissiveIntensity = state.emissiveIntensity
 
       particleSystem.add(particle)
     })

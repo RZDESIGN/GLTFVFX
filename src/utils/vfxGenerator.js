@@ -84,11 +84,15 @@ const buildExportScene = (params) => {
       state.initialPosition.z
     )
     mesh.scale.set(state.scale.x, state.scale.y, state.scale.z)
+    mesh.material.emissiveIntensity = state.emissiveIntensity
     root.add(mesh)
 
     const positions = Array.from(state.keyframes.positions)
     const rotations = Array.from(state.keyframes.rotations)
     const scales = Array.from(state.keyframes.scales)
+    const colors = state.keyframes.colors
+      ? Array.from(state.keyframes.colors)
+      : null
 
     tracks.push(
       new THREE.VectorKeyframeTrack(
@@ -111,6 +115,23 @@ const buildExportScene = (params) => {
         scales
       )
     )
+
+    if (colors) {
+      tracks.push(
+        new THREE.ColorKeyframeTrack(
+          `${mesh.name}.material.color`,
+          times,
+          colors
+        )
+      )
+      tracks.push(
+        new THREE.ColorKeyframeTrack(
+          `${mesh.name}.material.emissive`,
+          times,
+          colors
+        )
+      )
+    }
   })
 
   scene.add(root)
@@ -128,12 +149,13 @@ const buildExportScene = (params) => {
     scene,
     geometry,
     materials,
-    clip
+    clip,
+    style
   }
 }
 
 export const generateVFXGLTF = async (params) => {
-  const { scene, geometry, materials, clip } = buildExportScene(params)
+  const { scene, geometry, materials, clip, style } = buildExportScene(params)
   const exporter = new GLTFExporter()
 
   try {
@@ -197,7 +219,42 @@ export const generateVFXGLTF = async (params) => {
         emissionShape: params.emissionShape,
         animationType: params.animationType,
         glowIntensity: params.glowIntensity,
-        lifetime: params.lifetime
+        colorMode: style?.colorMode ?? 'mix',
+        colorGradient: style?.colorGradient
+          ? style.colorGradient.map(stop => ({
+              stop: stop.stop ?? stop.t ?? 0,
+              color: stop.color || stop.value || '#ffffff'
+            }))
+          : null,
+        colorGradientSource: style?.colorGradientSource ?? 'random',
+        colorGradientPlayback: style?.colorGradientPlayback ?? 'static',
+        colorGradientSpeed: style?.colorGradientSpeed ?? 0,
+        lifetime: params.lifetime,
+        emissionSurfaceOnly: !!params.emissionSurfaceOnly,
+        emissionOffset: params.emissionOffset || { x: 0, y: 0, z: 0 },
+        motionDirectionMode: params.motionDirectionMode || 'outwards',
+        motionDirection: params.motionDirection || { x: 0, y: 1, z: 0 },
+        motionAcceleration: params.motionAcceleration || { x: 0, y: 0, z: 0 },
+        useArcEmitter: !!(params.useArcEmitter ?? (style?.customEmitter === 'rainbowArc')),
+        arcRadius: params.arcRadius ?? style?.arcRadius ?? null,
+        arcStartAngle: params.arcStartAngle ?? style?.arcStartAngle ?? null,
+        arcEndAngle: params.arcEndAngle ?? style?.arcEndAngle ?? null,
+        arcThickness: params.arcThickness ?? style?.arcThickness ?? null,
+        arcHeightOffset: params.arcHeightOffset ?? style?.arcHeightOffset ?? null,
+        arcFlowSpeed: params.arcFlowSpeed ?? style?.arcFlowSpeed ?? null,
+        arcFlowMode: params.arcFlowMode ?? style?.arcFlowMode ?? 'continuous',
+        arcConfig: style?.customEmitter === 'rainbowArc'
+          ? {
+              radius: style.arcRadius ?? null,
+              startAngle: style.arcStartAngle ?? null,
+              endAngle: style.arcEndAngle ?? null,
+              thickness: style.arcThickness ?? null,
+              heightOffset: style.arcHeightOffset ?? null,
+              flowSpeed: style.arcFlowSpeed ?? null,
+              flowMode: style.arcFlowMode ?? 'continuous',
+              layers: Array.isArray(style.arcLayers) ? style.arcLayers : null
+            }
+          : null
       }
     }
 

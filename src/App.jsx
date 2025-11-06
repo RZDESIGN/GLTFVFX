@@ -5,6 +5,22 @@ import GeneratorPanel from './components/GeneratorPanel'
 import { generateVFXGLTF } from './utils/vfxGenerator'
 import { EFFECT_PRESETS, getEffectPreset, PARTICLE_SHAPE_OPTIONS } from './utils/effectBlueprint'
 
+const PARAM_FALLBACKS = {
+  emissionSurfaceOnly: false,
+  emissionOffset: { x: 0, y: 0, z: 0 },
+  motionDirectionMode: 'outwards',
+  motionDirection: { x: 0, y: 1, z: 0 },
+  motionAcceleration: { x: 0, y: 0, z: 0 },
+  useArcEmitter: false,
+  arcRadius: 3,
+  arcStartAngle: Math.PI * 0.1,
+  arcEndAngle: Math.PI * 0.9,
+  arcThickness: 0.12,
+  arcHeightOffset: 0,
+  arcFlowSpeed: 1,
+  arcFlowMode: 'continuous'
+}
+
 const defaultPreset = (() => {
   const fallback = {
     particleCount: 60,
@@ -23,6 +39,7 @@ const defaultPreset = (() => {
   const preset = getEffectPreset('fireball')
 
   return {
+    ...PARAM_FALLBACKS,
     ...fallback,
     ...(preset || {}),
     glowIntensity: 1,
@@ -44,6 +61,7 @@ function App() {
         const preset = getEffectPreset(value)
         return {
           ...prev,
+          ...PARAM_FALLBACKS,
           ...(preset || {}),
           glowIntensity: 1,
           particleShape: (preset && preset.particleShape) || 'style',
@@ -95,6 +113,7 @@ function App() {
 
     setVfxParams({
       effectType: selectedEffect,
+      ...PARAM_FALLBACKS,
       ...preset,
       particleShape: randomShape,
       particleCount: Math.max(8, Math.round(jitter(preset.particleCount, 0.75, 1.25))),
@@ -108,23 +127,23 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1 className="app-title">
-          <span>✨</span>
-          GLTF VFX Generator
-        </h1>
-        <button className="export-button" onClick={handleExportGLTF}>
-          <span>💾</span>
-          Export GLTF
-        </button>
-      </header>
+      <div className="brand-badge">
+        <span>✨</span>
+        GLTF VFX Generator
+      </div>
+      <button className="export-button" onClick={handleExportGLTF}>
+        <span>💾</span>
+        Export GLTF
+      </button>
       <main className="app-main">
         <VFXViewer params={vfxParams} />
-        <GeneratorPanel 
-          params={vfxParams} 
-          onParamChange={handleParamChange}
-          onRandomize={handleRandomize}
-        />
+        <aside className="settings-card">
+          <GeneratorPanel 
+            params={vfxParams} 
+            onParamChange={handleParamChange}
+            onRandomize={handleRandomize}
+          />
+        </aside>
       </main>
     </div>
   )
