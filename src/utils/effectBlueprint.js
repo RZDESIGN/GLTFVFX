@@ -50,6 +50,91 @@ const createRandomGenerator = (effectType, index) => {
   return (salt = 0) => seededRandom(base + salt * 17.17)
 }
 
+const toVector3 = (value) => {
+  const source = value && typeof value === 'object' ? value : {}
+  return {
+    x: Number.isFinite(source.x) ? source.x : 0,
+    y: Number.isFinite(source.y) ? source.y : 0,
+    z: Number.isFinite(source.z) ? source.z : 0
+  }
+}
+
+const addVectors = (a, b) => ({
+  x: a.x + b.x,
+  y: a.y + b.y,
+  z: a.z + b.z
+})
+
+const scaleVector = (v, scalar) => ({
+  x: v.x * scalar,
+  y: v.y * scalar,
+  z: v.z * scalar
+})
+
+const vectorLength = (v) => Math.hypot(v.x, v.y, v.z)
+
+const normalizeVector = (v) => {
+  const length = vectorLength(v)
+  if (length === 0) {
+    return { x: 0, y: 1, z: 0 }
+  }
+  return {
+    x: v.x / length,
+    y: v.y / length,
+    z: v.z / length
+  }
+}
+
+const wrap01 = (value) => {
+  if (!Number.isFinite(value)) return 0
+  return ((value % 1) + 1) % 1
+}
+
+const normalizeGradientStops = (stops) => {
+  if (!Array.isArray(stops)) return null
+  const normalized = stops
+    .map(stop => {
+      if (!stop) return null
+      const t = clamp(Number(stop.stop ?? stop.t ?? 0), 0, 1)
+      const colorValue = stop.color || stop.value || '#ffffff'
+      const rgb = hexToRgb(colorValue)
+      return { t, color: rgb }
+    })
+    .filter(entry => entry !== null)
+    .sort((a, b) => a.t - b.t)
+
+  if (!normalized.length) {
+    return null
+  }
+  return normalized
+}
+
+const sampleGradient = (stops, t, { wrap = false } = {}) => {
+  if (!stops || stops.length === 0) {
+    return { r: 1, g: 1, b: 1 }
+  }
+  let target = wrap ? wrap01(t) : clamp(t, 0, 1)
+
+  for (let i = 0; i < stops.length - 1; i++) {
+    const current = stops[i]
+    const next = stops[i + 1]
+    if (target >= current.t && target <= next.t) {
+      const span = Math.max(1e-6, next.t - current.t)
+      const alpha = (target - current.t) / span
+      return {
+        r: current.color.r + (next.color.r - current.color.r) * alpha,
+        g: current.color.g + (next.color.g - current.color.g) * alpha,
+        b: current.color.b + (next.color.b - current.color.b) * alpha
+      }
+    }
+  }
+
+  if (target <= stops[0].t) {
+    return { ...stops[0].color }
+  }
+  return { ...stops[stops.length - 1].color }
+}
+
 const eulerToQuaternion = (x, y, z) => {
   const cx = Math.cos(x / 2)
   const sx = Math.sin(x / 2)
@@ -76,7 +161,9 @@ const normalizeQuaternion = (quat) => {
   }
 }
 
-const computeEmissionPosition = (shape, spread, random, style) => {
+const computeEmissionPosition = (shape, spread, random, style, params) => {
+  const surfaceOnly = Boolean(params?.emissionSurfaceOnly)
+
   if (style.customEmitter === 'vortex') {
     const height = style.vortexHeight ?? spread * 2.3
     const layers = Math.max(2, Math.floor(style.vortexLayers ?? 16))
@@ -113,41 +200,103 @@ const computeEmissionPosition = (shape, spread, random, style) => {
     }
   }
 
+  if (style.customEmitter === 'rainbowArc') {
+    const radius = style.arcRadius ?? spread * 1.1
+    const startAngle = style.arcStartAngle ?? Math.PI * 0.1
+    const endAngle = style.arcEndAngle ?? Math.PI * 0.9
+    const angleRange = Math.max(1e-5, endAngle - startAngle)
+    const t = random(35)
+    const angle = startAngle + angleRange * t
+    const thickness = style.arcThickness ?? 0.4
+    const heightOffset = style.arcHeightOffset ?? 0
+    const lateral = (random(36) - 0.5) * thickness
+
+    const x = Math.cos(angle) * radius
+    const y = Math.sin(angle) * radius + heightOffset
+    const z = lateral
+
+    return {
+      x,
+      y,
+      z,
+      angle,
+      radius,
+      arcRadius: radius,
+      arcAngleRange: { start: startAngle, end: endAngle },
+      lateral,
+      heightOffset
+    }
+  }
+
   switch (shape) {
     case 'sphere': {
       const u = random(10)
       const v = random(11)
       const theta = 2 * Math.PI * u
       const phi = Math.acos(2 * v - 1)
-      const radius = spread * Math.cbrt(random(12))
+      const baseRadius = Math.max(spread, 0)
+      const radius = surfaceOnly
+        ? baseRadius
+        : baseRadius * Math.cbrt(Math.max(0, random(12)))
       const x = radius * Math.sin(phi) * Math.cos(theta)
       const y = radius * Math.sin(phi) * Math.sin(theta)
       const z = radius * Math.cos(phi)
-      return { x, y, z }
+      return { x, y, z, radius }
     }
     case 'cone': {
       const angle = random(13) * Math.PI * 2
-      const height = spread * (style.coneHeightMultiplier ?? 2) * random(14)
-      const radius = spread * (style.coneRadiusMultiplier ?? 0.6) * Math.sqrt(random(15))
+      const heightRange = spread * (style.coneHeightMultiplier ?? 2)
+      const heightT = random(14)
+      const height = heightRange * heightT
+      const radiusMax = spread * (style.coneRadiusMultiplier ?? 0.6)
+      const baseRadius = Math.max(0, radiusMax)
+      const radius = surfaceOnly
+        ? baseRadius * clamp(heightRange > 0 ? height / heightRange : 0, 0, 1)
+        : baseRadius * Math.sqrt(Math.max(0, random(15)))
       const x = radius * Math.cos(angle)
       const z = radius * Math.sin(angle)
       const y = height
-      return { x, y, z }
+      return { x, y, z, radius, height }
     }
     case 'ring': {
       const angle = random(16) * Math.PI * 2
-      const thickness = style.ringThickness ?? 0.35
+      const thickness = surfaceOnly ? 0 : (style.ringThickness ?? 0.35)
       const radius = spread * (style.ringRadiusMultiplier ?? 0.8)
-      const x = (radius + (random(17) - 0.5) * thickness) * Math.cos(angle)
-      const z = (radius + (random(18) - 0.5) * thickness) * Math.sin(angle)
+      const radialOffset = thickness * (random(17) - 0.5)
+      const sampleRadius = surfaceOnly ? radius : radius + radialOffset
+      const x = sampleRadius * Math.cos(angle)
+      const z = sampleRadius * Math.sin(angle)
       const y = (random(19) - 0.5) * (style.ringHeight ?? 0.3)
-      return { x, y, z }
+      return { x, y, z, angle, radius }
+    }
+    case 'disc': {
+      const angle = random(40) * Math.PI * 2
+      const baseRadius = Math.max(spread, 0)
+      const radius = surfaceOnly
+        ? baseRadius
+        : baseRadius * Math.sqrt(Math.max(0, random(41)))
+      const x = radius * Math.cos(angle)
+      const z = radius * Math.sin(angle)
+      const y = 0
+      return { x, y, z, angle, radius }
     }
     case 'box':
     default: {
-      const x = (random(20) - 0.5) * spread * 2
-      const y = (random(21) - 0.5) * spread * 2
-      const z = (random(22) - 0.5) * spread * 2
+      const half = spread
+      if (surfaceOnly) {
+        const axis = Math.floor(random(42) * 3)
+        const sign = random(43) > 0.5 ? 1 : -1
+        const coords = [
+          (random(44) - 0.5) * half * 2,
+          (random(45) - 0.5) * half * 2,
+          (random(46) - 0.5) * half * 2
+        ]
+        coords[axis] = sign * half
+        return { x: coords[0], y: coords[1], z: coords[2] }
+      }
+      const x = (random(20) - 0.5) * half * 2
+      const y = (random(21) - 0.5) * half * 2
+      const z = (random(22) - 0.5) * half * 2
       return { x, y, z }
     }
   }
@@ -161,6 +310,11 @@ const DEFAULT_STYLE = {
   sizeJitter: 0.25,
   colorBias: 0.5,
   colorVariance: 0.2,
+  colorMode: 'mix',
+  colorGradient: null,
+  colorGradientSource: 'random',
+  colorGradientPlayback: 'static',
+  colorGradientSpeed: 0,
   opacityRange: [0.7, 1],
   emissiveMultiplier: 1.2,
   emissiveVariance: 0.15,
@@ -189,7 +343,15 @@ const DEFAULT_STYLE = {
   pulseScaleRange: 0.75,
   systemRotationSpeed: 0.35,
   maxParticles: 160,
-  keyframeSteps: 6
+  keyframeSteps: 6,
+  arcRadius: 1.5,
+  arcStartAngle: Math.PI * 0.2,
+  arcEndAngle: Math.PI * 0.8,
+  arcThickness: 0.2,
+  arcHeightOffset: 0,
+  arcFlowSpeed: 1,
+  arcFlowMode: 'continuous',
+  arcLayers: null
 }
 
 const PARTICLE_SHAPE_DEFINITIONS = [
@@ -483,6 +645,51 @@ const EFFECT_STYLES = {
     spiralHeight: 2.2,
     systemRotationSpeed: 0.48,
     maxParticles: 110
+  },
+  rainbow: {
+    customEmitter: 'rainbowArc',
+    geometry: { type: 'plane' },
+    baseScale: [0.6, 0.6, 0.6],
+    scaleVariance: [0.12, 0.08, 0.12],
+    sizeMultiplier: 0.85,
+    sizeJitter: 0.12,
+    colorMode: 'bands',
+    colorGradient: null,
+    opacityRange: [0.4, 0.75],
+    emissiveMultiplier: 1.9,
+    emissiveVariance: 0.25,
+    roughness: 0.2,
+    metalness: 0.05,
+    alphaMode: 'BLEND',
+    depthWrite: false,
+    floatStrength: 0.2,
+    floatFrequency: 3.2,
+    radialJitter: 0.02,
+    verticalJitter: 0.05,
+    spreadMultiplier: 1,
+    spinRates: [0.6, 1.1, 0.5],
+    speedVariance: 0.15,
+    driftStrength: 0.12,
+    pulseScaleBase: 0.6,
+    pulseScaleRange: 0.45,
+    systemRotationSpeed: 0.62,
+    maxParticles: 220,
+    keyframeSteps: 8,
+    arcRadius: 3,
+    arcStartAngle: Math.PI * 0.1,
+    arcEndAngle: Math.PI * 0.9,
+    arcThickness: 0.12,
+    arcHeightOffset: 0,
+    arcFlowSpeed: 1,
+    arcFlowMode: 'continuous',
+    arcLayers: [
+      { color: '#ff4f4f', offset: -0.45 },
+      { color: '#ff9f2f', offset: -0.28 },
+      { color: '#fff94f', offset: -0.1 },
+      { color: '#4fff9b', offset: 0.08 },
+      { color: '#4fd3ff', offset: 0.26 },
+      { color: '#9d4fff', offset: 0.44 }
+    ]
   }
 }
 
@@ -590,6 +797,31 @@ export const EFFECT_PRESETS = {
     glowIntensity: 1,
     lifetime: 2.6,
     particleShape: 'style'
+  },
+  rainbow: {
+    particleCount: 180,
+    particleSize: 0.16,
+    particleSpeed: 0.35,
+    spread: 2.4,
+    primaryColor: '#ff4f4f',
+    secondaryColor: '#4fffff',
+    emissionShape: 'disc',
+    animationType: 'orbit',
+    glowIntensity: 1.2,
+    lifetime: 3,
+    particleShape: 'style',
+    emissionSurfaceOnly: true,
+    emissionOffset: { x: 0, y: 0.1, z: 0 },
+    motionDirectionMode: 'outwards',
+    motionAcceleration: { x: 0, y: 0.65, z: 0 },
+    useArcEmitter: true,
+    arcRadius: 3,
+    arcStartAngle: Math.PI * 0.1,
+    arcEndAngle: Math.PI * 0.9,
+    arcThickness: 0.12,
+    arcHeightOffset: 0,
+    arcFlowSpeed: 1,
+    arcFlowMode: 'continuous'
   }
 }
 
@@ -599,6 +831,7 @@ export const getEffectPreset = (effectType) => {
 
 export const getEffectStyle = (effectType) => {
   const overrides = EFFECT_STYLES[effectType] || {}
+  const gradientStops = overrides.colorGradient ?? DEFAULT_STYLE.colorGradient
   return {
     ...DEFAULT_STYLE,
     ...overrides,
@@ -608,11 +841,26 @@ export const getEffectStyle = (effectType) => {
     },
     baseScale: [...(overrides.baseScale || DEFAULT_STYLE.baseScale)],
     scaleVariance: [...(overrides.scaleVariance || DEFAULT_STYLE.scaleVariance)],
-    spinRates: [...(overrides.spinRates || DEFAULT_STYLE.spinRates)]
+    spinRates: [...(overrides.spinRates || DEFAULT_STYLE.spinRates)],
+    arcRadius: overrides.arcRadius ?? DEFAULT_STYLE.arcRadius,
+    arcStartAngle: overrides.arcStartAngle ?? DEFAULT_STYLE.arcStartAngle,
+    arcEndAngle: overrides.arcEndAngle ?? DEFAULT_STYLE.arcEndAngle,
+    arcThickness: overrides.arcThickness ?? DEFAULT_STYLE.arcThickness,
+    arcHeightOffset: overrides.arcHeightOffset ?? DEFAULT_STYLE.arcHeightOffset,
+    arcFlowSpeed: overrides.arcFlowSpeed ?? DEFAULT_STYLE.arcFlowSpeed,
+    arcFlowMode: overrides.arcFlowMode ?? DEFAULT_STYLE.arcFlowMode,
+    arcLayers: overrides.arcLayers
+      ? overrides.arcLayers.map(layer => ({ ...layer }))
+      : DEFAULT_STYLE.arcLayers
+        ? DEFAULT_STYLE.arcLayers.map(layer => ({ ...layer }))
+        : null,
+    colorGradient: gradientStops
+      ? gradientStops.map(stop => ({ ...stop }))
+      : null
   }
 }
 
-const buildParticleState = (params, style, index) => {
+const buildParticleState = (params, style, index, totalCount = 1) => {
   const random = createRandomGenerator(params.effectType, index)
   const baseSize = Math.max(0.02, params.particleSize * (style.sizeMultiplier ?? 1))
   const sizeVariation = (random(1) - 0.5) * (style.sizeJitter ?? 0) * baseSize * 2
@@ -644,7 +892,7 @@ const buildParticleState = (params, style, index) => {
       0,
       1
     )
-  const color = mixHexColors(params.primaryColor, params.secondaryColor, colorMix)
+  let color = mixHexColors(params.primaryColor, params.secondaryColor, colorMix)
 
   const [opacityMin, opacityMax] = style.opacityRange || [1, 1]
   const opacity =
@@ -661,7 +909,8 @@ const buildParticleState = (params, style, index) => {
     params.emissionShape,
     spread,
     random,
-    style
+    style,
+    params
   )
 
   let {
@@ -690,10 +939,56 @@ const buildParticleState = (params, style, index) => {
 
   y += style.heightBias ?? 0
 
-  const radius = emissionRadius ?? Math.hypot(x, z)
+  const emitterOffset = toVector3(params.emissionOffset)
+  const relativePosition = { x, y, z }
+
+  const arcAngleRange =
+    emission.arcAngleRange ||
+    (style.customEmitter === 'rainbowArc'
+      ? {
+          start: style.arcStartAngle ?? Math.PI * 0.1,
+          end: style.arcEndAngle ?? Math.PI * 0.9
+        }
+      : null)
+
+  let arcRadius = emission.arcRadius
+  const arcHeightOffset = style.arcHeightOffset ?? 0
+  let arcLateralBase = emission.lateral ?? 0
+  let selectedArcLayer = null
+
+  if (style.customEmitter === 'rainbowArc' && Array.isArray(style.arcLayers) && style.arcLayers.length > 0) {
+    selectedArcLayer = style.arcLayers[index % style.arcLayers.length]
+    if (selectedArcLayer) {
+      const layerOffset = Number(selectedArcLayer.offset ?? 0)
+      relativePosition.z += layerOffset
+      arcLateralBase += layerOffset
+    }
+  }
+
+  if (!Number.isFinite(arcRadius)) {
+    const fallbackRadius = style.arcRadius ?? params.spread
+    arcRadius = Math.max(fallbackRadius, Math.hypot(relativePosition.x, relativePosition.z))
+  }
+
+  const angle = emissionAngle ?? Math.atan2(relativePosition.z, relativePosition.x)
+  let arcOffset = null
+
+  if (style.customEmitter === 'rainbowArc') {
+    const baseX = Math.cos(angle) * (arcRadius ?? 0)
+    const baseY = Math.sin(angle) * (arcRadius ?? 0) + arcHeightOffset
+    const baseZ = arcLateralBase
+    arcOffset = {
+      x: relativePosition.x - baseX,
+      y: relativePosition.y - baseY,
+      z: relativePosition.z - baseZ
+    }
+  }
+
+  const initialPosition = addVectors(relativePosition, emitterOffset)
+
+  const radius = emissionRadius ?? Math.hypot(relativePosition.x, relativePosition.z)
   const baseRadius = emissionBaseRadius ?? radius
   const tipRadius = emissionTipRadius ?? Math.max(0.02, baseRadius * 0.15)
-  const angle = emissionAngle ?? Math.atan2(z, x)
   const orbitOffset =
     style.customEmitter === 'vortex'
       ? (emissionAngle ?? 0) + random(11) * Math.PI * 0.6
@@ -702,6 +997,61 @@ const buildParticleState = (params, style, index) => {
     (style.floatStrength ?? 0.2) * (0.7 + random(12) * 0.6)
   const floatFrequency =
     (style.floatFrequency ?? 2) * (0.8 + random(13) * 0.4)
+
+  let colorGradientState = null
+  const gradientStopsRaw = style.colorGradient
+  const normalizedGradientStops = normalizeGradientStops(gradientStopsRaw)
+
+  if (normalizedGradientStops && normalizedGradientStops.length) {
+    const gradientPlayback = style.colorGradientPlayback || 'static'
+    const gradientSource = style.colorGradientSource || 'random'
+    const gradientSpeed = style.colorGradientSpeed ?? 0
+    let gradientBaseT = 0
+
+    switch (gradientSource) {
+      case 'angle':
+        gradientBaseT = wrap01(angle / (Math.PI * 2))
+        break
+      case 'layer':
+        gradientBaseT = clamp(emissionLayer ?? random(25), 0, 1)
+        break
+      case 'radius': {
+        const maxRadius = Math.max(1e-3, spread)
+        gradientBaseT = clamp((radius ?? 0) / maxRadius, 0, 1)
+        break
+      }
+      case 'height': {
+        const range = Math.max(1e-3, spread * 2)
+        gradientBaseT = clamp((initialPosition.y + spread) / range, 0, 1)
+        break
+      }
+      case 'random':
+      default:
+        gradientBaseT = random(25)
+        break
+    }
+
+    const wrap = gradientPlayback === 'scroll'
+    const baseSample = wrap ? wrap01(gradientBaseT) : clamp(gradientBaseT, 0, 1)
+    const initialRgb = sampleGradient(normalizedGradientStops, baseSample, {
+      wrap
+    })
+    color = rgbToHex(initialRgb)
+
+    colorGradientState = {
+      stops: normalizedGradientStops,
+      baseT: baseSample,
+      playback: gradientPlayback,
+      speed: gradientSpeed,
+      wrap,
+      source: gradientSource
+    }
+  }
+
+  if (selectedArcLayer && selectedArcLayer.color) {
+    color = selectedArcLayer.color
+    colorGradientState = null
+  }
 
   const spinRates = style.spinRates || [1, 1, 1]
   const spin = {
@@ -712,6 +1062,28 @@ const buildParticleState = (params, style, index) => {
 
   const speedOffset =
     (random(17) - 0.5) * (style.speedVariance ?? 0)
+  const speedMultiplier = Math.max(0, 1 + speedOffset)
+
+  const outwardDirection = normalizeVector(relativePosition)
+  const customDirection = normalizeVector(toVector3(params.motionDirection))
+  let direction
+  switch (params.motionDirectionMode) {
+    case 'inwards':
+      direction = scaleVector(outwardDirection, -1)
+      break
+    case 'custom':
+      direction = customDirection
+      break
+    case 'outwards':
+    default:
+      direction = outwardDirection
+      break
+  }
+
+  const baseSpeed = Math.max(0, params.particleSpeed) * speedMultiplier
+  const velocity = scaleVector(direction, baseSpeed)
+  const acceleration = toVector3(params.motionAcceleration)
+  const velocityMagnitude = vectorLength(velocity)
 
   const driftAmplitude =
     (style.driftStrength ?? 0) * (0.6 + random(18) * 0.8)
@@ -719,13 +1091,39 @@ const buildParticleState = (params, style, index) => {
 
   const swirlPhase = random(24) * Math.PI * 2
 
+  const totalParticles = Math.max(1, totalCount)
+  let arcFlowMode = params.arcFlowMode || style.arcFlowMode || 'continuous'
+  let arcTravelSpeed = Math.max(
+    0.01,
+    params.arcFlowSpeed ?? style.arcFlowSpeed ?? 1
+  )
+  let arcTravelOffset = 0
+
+  if (style.customEmitter === 'rainbowArc') {
+    if (arcFlowMode !== 'continuous' && arcFlowMode !== 'burst') {
+      arcFlowMode = 'continuous'
+    }
+    if (arcFlowMode === 'continuous') {
+      const baseOffsetRatio = totalParticles > 1 ? index / totalParticles : 0
+      const jitter = (random(26) - 0.5) * (1 / totalParticles)
+      arcTravelOffset = ((baseOffsetRatio + jitter) % 1 + 1) % 1
+    } else {
+      arcTravelOffset = 0
+    }
+  } else {
+    arcFlowMode = 'continuous'
+    arcTravelSpeed = 0
+    arcTravelOffset = 0
+  }
+
   return {
     index,
     color,
     opacity,
     emissiveIntensity,
     scale,
-    initialPosition: { x, y, z },
+    initialPosition,
+    colorGradient: colorGradientState,
     radius,
     baseRadius,
     tipRadius,
@@ -739,6 +1137,17 @@ const buildParticleState = (params, style, index) => {
     driftPhase,
     swirlPhase,
     sizeScalar,
+    arcRadius,
+    arcRange: arcAngleRange,
+    arcOffset,
+    arcLateral: arcLateralBase,
+    arcTravelOffset,
+    arcTravelSpeed,
+    arcFlowMode,
+    direction,
+    velocity,
+    acceleration,
+    velocityMagnitude,
     layerT: emissionLayer ?? random(20),
     emitterHeight: emissionHeight ?? null
   }
@@ -748,6 +1157,37 @@ const buildAnimationKeyframes = (params, style, state, times) => {
   const positions = new Float32Array(times.length * 3)
   const rotations = new Float32Array(times.length * 4)
   const scales = new Float32Array(times.length * 3)
+  const gradientInfo = state.colorGradient
+  const colors =
+    gradientInfo && gradientInfo.stops && gradientInfo.playback !== 'static'
+      ? new Float32Array(times.length * 3)
+      : null
+  const gradientStops = gradientInfo?.stops || null
+  const gradientPlayback = gradientInfo?.playback || 'static'
+  const gradientBaseT = gradientInfo?.baseT ?? 0
+  const gradientSpeed = gradientInfo?.speed ?? 0
+  const gradientSampleOptions = {
+    wrap: gradientInfo?.wrap ?? false
+  }
+
+  const isRainbowArc = style.customEmitter === 'rainbowArc'
+  const arcRange = state.arcRange || {
+    start: style.arcStartAngle ?? Math.PI * 0.1,
+    end: style.arcEndAngle ?? Math.PI * 0.9
+  }
+  const arcStartAngle = arcRange.start ?? 0
+  const arcEndAngle =
+    arcRange.end ?? arcStartAngle + Math.PI * 0.8
+  const arcSpan = Math.max(1e-5, arcEndAngle - arcStartAngle)
+  const arcRadius = Math.max(
+    0.01,
+    state.arcRadius ?? style.arcRadius ?? params.spread
+  )
+  const arcFlowMode = state.arcFlowMode || style.arcFlowMode || 'continuous'
+  const arcTravelSpeed = state.arcTravelSpeed ?? (style.arcFlowSpeed ?? 1)
+  const arcTravelOffset = state.arcTravelOffset ?? 0
+  const arcOffsetVec = state.arcOffset || { x: 0, y: 0, z: 0 }
+  const arcLateral = state.arcLateral ?? 0
 
   const spiralHeight = style.spiralHeight ?? 1
   const riseSpeed = style.riseSpeed ?? 0.5
@@ -757,8 +1197,11 @@ const buildAnimationKeyframes = (params, style, state, times) => {
   const driftStrength = state.driftAmplitude ?? 0
   const pulseBase = style.pulseScaleBase ?? 0.55
   const pulseRange = style.pulseScaleRange ?? 0.75
-
-  const effectiveSpeedMultiplier = 1 + state.speedOffset
+  const velocityVec = state.velocity || { x: 0, y: 0, z: 0 }
+  const accelerationVec = state.acceleration || { x: 0, y: 0, z: 0 }
+  const effectiveSpeedMultiplier = Math.max(0, 1 + (state.speedOffset ?? 0))
+  const effectiveSpeed = Math.max(0, params.particleSpeed) * effectiveSpeedMultiplier
+  const emitterOffset = toVector3(params.emissionOffset)
 
   const duration = params.lifetime > 0 ? params.lifetime : 1
 
@@ -766,8 +1209,6 @@ const buildAnimationKeyframes = (params, style, state, times) => {
     const time = times[i]
     const elapsed = time
     const progress = duration === 0 ? 0 : Math.min(1, elapsed / duration)
-    const effectiveSpeed = params.particleSpeed * effectiveSpeedMultiplier
-
     let x = state.initialPosition.x
     let y = state.initialPosition.y
     let z = state.initialPosition.z
@@ -776,111 +1217,224 @@ const buildAnimationKeyframes = (params, style, state, times) => {
     let scaleY = state.scale.y
     let scaleZ = state.scale.z
 
-    switch (params.animationType) {
-      case 'rise': {
-        const riseProgress = progress * riseHeight * riseSpeed
-        y = state.initialPosition.y + riseProgress
+    if (isRainbowArc) {
+      const flowMode = arcFlowMode
+      const startX = emitterOffset.x + Math.cos(arcStartAngle) * arcRadius + arcOffsetVec.x
+      const startY = emitterOffset.y + Math.sin(arcStartAngle) * arcRadius + arcOffsetVec.y
+      const startZ = emitterOffset.z + arcLateral + arcOffsetVec.z
+
+      const endX = emitterOffset.x + Math.cos(arcEndAngle) * arcRadius + arcOffsetVec.x
+      const endY = emitterOffset.y + Math.sin(arcEndAngle) * arcRadius + arcOffsetVec.y
+      const endZ = emitterOffset.z + arcLateral + arcOffsetVec.z
+
+      if (flowMode === 'continuous') {
+        let phaseValue = progress * arcTravelSpeed + arcTravelOffset
+        phaseValue = ((phaseValue % 1) + 1) % 1
+
+        const arcAngle = arcStartAngle + phaseValue * arcSpan
+        x = emitterOffset.x + Math.cos(arcAngle) * arcRadius + arcOffsetVec.x
+        y = emitterOffset.y + Math.sin(arcAngle) * arcRadius + arcOffsetVec.y
+        z = emitterOffset.z + arcLateral + arcOffsetVec.z
 
         if (driftStrength > 0) {
-          const drift = driftStrength
-          const driftAngle = progress * Math.PI * 2 + state.driftPhase
+          const drift = driftStrength * 0.25
+          const driftAngle = phaseValue * Math.PI * 2 + state.driftPhase
           x += Math.sin(driftAngle) * drift
-          z += Math.cos(driftAngle * 0.8) * drift
+          z += Math.cos(driftAngle * 0.6) * drift
         }
-        break
-      }
-      case 'explode': {
-        const normalized = progress
-        const expansion = 1 + normalized * explosionSpread
-        x = state.initialPosition.x * expansion
-        y = state.initialPosition.y * expansion
-        z = state.initialPosition.z * expansion
-        const shrink = Math.max(0.12, 1 - normalized * explosionShrink)
-        scaleX = state.scale.x * shrink
-        scaleY = state.scale.y * shrink
-        scaleZ = state.scale.z * shrink
-        break
-      }
-      case 'spiral': {
-        const spiralTurns = (style.spiralRevolutions ?? 4.5) * Math.max(0.4, effectiveSpeed * (style.spiralAngularSpeed ?? 1))
-        const revolutions = spiralTurns * progress
-        const angle = state.orbitOffset + state.swirlPhase + revolutions * Math.PI * 2
-        const fractionalRevolution = revolutions - Math.floor(revolutions)
 
-        if (style.customEmitter === 'vortex') {
-          const height = style.vortexHeight ?? style.spiralHeight ?? 2
-          const drift = style.vortexLayerDrift ?? 0.75
-          const totalProgress = (state.layerT ?? 0) + revolutions * drift
-          const layerProgress = totalProgress - Math.floor(totalProgress)
+        const floatWave =
+          Math.sin(progress * Math.PI * 2 * (state.floatFrequency || 1) + state.orbitOffset) *
+          state.floatStrength *
+          0.45
+        y += floatWave
 
-          const maxRadius = style.vortexBaseRadius ?? state.baseRadius ?? state.radius
-          const minRadius = Math.max(
-            0.02,
-            style.vortexTipRadius ?? state.tipRadius ?? maxRadius * 0.15
-          )
-          const falloff = style.vortexRadiusFalloff ?? 1.3
-          const radiusRange = Math.max(0.001, maxRadius - minRadius)
-          let swirlRadius =
-            minRadius + radiusRange * Math.pow(layerProgress, falloff)
+        const fadeIn = Math.min(1, phaseValue / 0.08)
+        const fadeOut = Math.min(1, (1 - phaseValue) / 0.08)
+        const visibility = Math.max(0, Math.min(fadeIn, fadeOut))
 
-          const taper = 1 - (style.spiralTaper ?? 0.35) * (1 - layerProgress)
-          swirlRadius *= Math.max(0.25, taper)
+        const arcPulse =
+          Math.sin(progress * Math.PI * 2 + state.orbitOffset + state.index * 0.18) * 0.2 + 0.9
+        const scaleWave = arcPulse * visibility
 
-          const swayRadius = style.vortexSwayRadius ?? 0
-          if (swayRadius > 0) {
-            swirlRadius += Math.sin(angle * 0.35 + state.swirlPhase) * swayRadius
-          }
+        scaleX = state.scale.x * scaleWave
+        scaleY = state.scale.y * scaleWave
+        scaleZ = state.scale.z * scaleWave
+      } else {
+        const phaseValue = progress * arcTravelSpeed + arcTravelOffset
 
-          x = Math.cos(angle) * swirlRadius
-          z = Math.sin(angle) * swirlRadius
-          y = -height * 0.5 + layerProgress * height
-
-          const sway = style.vortexSway ?? 0
-          if (sway !== 0) {
-            y += Math.sin(
-              angle * (style.vortexSwaySpeed ?? 1.5) + state.swirlPhase
-            ) * sway
-          }
-
-          const radialScale = 0.65 + layerProgress * 0.45
-          scaleX = state.scale.x * radialScale
-          scaleZ = state.scale.z * radialScale
-          scaleY = state.scale.y * (0.85 + (1 - layerProgress) * 0.25)
+        if (phaseValue <= 0) {
+          x = startX
+          y = startY
+          z = startZ
+          scaleX = scaleY = scaleZ = 0
+        } else if (phaseValue >= 1) {
+          x = endX
+          y = endY
+          z = endZ
+          scaleX = scaleY = scaleZ = 0
         } else {
-          const taper = Math.max(0.2, 1 - fractionalRevolution * (style.spiralTaper ?? 0.3))
-          const spiralRadius = state.radius * taper
-          x = Math.cos(angle) * spiralRadius
-          z = Math.sin(angle) * spiralRadius
+          const arcAngle = arcStartAngle + phaseValue * arcSpan
+          x = emitterOffset.x + Math.cos(arcAngle) * arcRadius + arcOffsetVec.x
+          y = emitterOffset.y + Math.sin(arcAngle) * arcRadius + arcOffsetVec.y
+          z = emitterOffset.z + arcLateral + arcOffsetVec.z
+
+          const floatWave =
+            Math.sin(progress * Math.PI * 2 * (state.floatFrequency || 1) + state.orbitOffset) *
+            state.floatStrength *
+            0.45
+          y += floatWave
+
+          const fadeIn = Math.min(1, phaseValue / 0.12)
+          const fadeOut = Math.min(1, (1 - phaseValue) / 0.12)
+          const visibility = Math.max(0, Math.min(fadeIn, fadeOut))
+
+          const arcPulse =
+            Math.sin(progress * Math.PI * 2 + state.orbitOffset + state.index * 0.18) * 0.2 + 0.9
+          const scaleWave = arcPulse * visibility
+
+          scaleX = state.scale.x * scaleWave
+          scaleY = state.scale.y * scaleWave
+          scaleZ = state.scale.z * scaleWave
+        }
+      }
+    } else {
+      switch (params.animationType) {
+        case 'rise': {
+          const riseProgress = progress * riseHeight * riseSpeed
+          y = state.initialPosition.y + riseProgress
+
+          if (driftStrength > 0) {
+            const drift = driftStrength
+            const driftAngle = progress * Math.PI * 2 + state.driftPhase
+            x += Math.sin(driftAngle) * drift
+            z += Math.cos(driftAngle * 0.8) * drift
+          }
+          break
+        }
+        case 'explode': {
+          const normalized = progress
+          const expansion = 1 + normalized * explosionSpread
+          x = state.initialPosition.x * expansion
+          y = state.initialPosition.y * expansion
+          z = state.initialPosition.z * expansion
+          const shrink = Math.max(0.12, 1 - normalized * explosionShrink)
+          scaleX = state.scale.x * shrink
+          scaleY = state.scale.y * shrink
+          scaleZ = state.scale.z * shrink
+          break
+        }
+        case 'spiral': {
+          const spiralTurns = (style.spiralRevolutions ?? 4.5) * Math.max(0.4, effectiveSpeed * (style.spiralAngularSpeed ?? 1))
+          const revolutions = spiralTurns * progress
+          const angle = state.orbitOffset + state.swirlPhase + revolutions * Math.PI * 2
+          const fractionalRevolution = revolutions - Math.floor(revolutions)
+
+          if (style.customEmitter === 'vortex') {
+            const height = style.vortexHeight ?? style.spiralHeight ?? 2
+            const drift = style.vortexLayerDrift ?? 0.75
+            const totalProgress = (state.layerT ?? 0) + revolutions * drift
+            const layerProgress = totalProgress - Math.floor(totalProgress)
+
+            const maxRadius = style.vortexBaseRadius ?? state.baseRadius ?? state.radius
+            const minRadius = Math.max(
+              0.02,
+              style.vortexTipRadius ?? state.tipRadius ?? maxRadius * 0.15
+            )
+            const falloff = style.vortexRadiusFalloff ?? 1.3
+            const radiusRange = Math.max(0.001, maxRadius - minRadius)
+            let swirlRadius =
+              minRadius + radiusRange * Math.pow(layerProgress, falloff)
+
+            const taper = 1 - (style.spiralTaper ?? 0.35) * (1 - layerProgress)
+            swirlRadius *= Math.max(0.25, taper)
+
+            const swayRadius = style.vortexSwayRadius ?? 0
+            if (swayRadius > 0) {
+              swirlRadius += Math.sin(angle * 0.35 + state.swirlPhase) * swayRadius
+            }
+
+            x = emitterOffset.x + Math.cos(angle) * swirlRadius
+            z = emitterOffset.z + Math.sin(angle) * swirlRadius
+            y = emitterOffset.y - height * 0.5 + layerProgress * height
+
+            const sway = style.vortexSway ?? 0
+            if (sway !== 0) {
+              y += Math.sin(
+                angle * (style.vortexSwaySpeed ?? 1.5) + state.swirlPhase
+              ) * sway
+            }
+
+            const radialScale = 0.65 + layerProgress * 0.45
+            scaleX = state.scale.x * radialScale
+            scaleZ = state.scale.z * radialScale
+            scaleY = state.scale.y * (0.85 + (1 - layerProgress) * 0.25)
+          } else {
+            const taper = Math.max(0.2, 1 - fractionalRevolution * (style.spiralTaper ?? 0.3))
+            const spiralRadius = state.radius * taper
+            x = emitterOffset.x + Math.cos(angle) * spiralRadius
+            z = emitterOffset.z + Math.sin(angle) * spiralRadius
+            y =
+              state.initialPosition.y +
+              fractionalRevolution * spiralHeight
+          }
+
+          break
+        }
+        case 'pulse': {
+          const cycles = Math.max(1, effectiveSpeed)
+          const oscillation =
+            Math.sin(progress * Math.PI * 2 * cycles + state.orbitOffset) * 0.5 + 0.5
+          const scaleFactor = pulseBase + oscillation * pulseRange
+          scaleX = state.scale.x * scaleFactor
+          scaleY = state.scale.y * scaleFactor
+          scaleZ = state.scale.z * scaleFactor
+          break
+        }
+        case 'orbit':
+        default: {
+          const orbitTurns = Math.max(1, effectiveSpeed)
+          const orbitAngle =
+            state.orbitOffset + progress * Math.PI * 2 * orbitTurns
+          x = emitterOffset.x + Math.cos(orbitAngle) * state.radius
+          z = emitterOffset.z + Math.sin(orbitAngle) * state.radius
           y =
             state.initialPosition.y +
-            fractionalRevolution * spiralHeight
+            Math.sin(progress * Math.PI * 2 * (state.floatFrequency || 1) + state.orbitOffset) *
+              state.floatStrength
+          break
         }
+      }
+    }
 
-        break
+    if (
+      !isRainbowArc &&
+      (velocityVec.x !== 0 || velocityVec.y !== 0 || velocityVec.z !== 0 || accelerationVec.x !== 0 || accelerationVec.y !== 0 || accelerationVec.z !== 0)
+    ) {
+      const halfTimeSquared = 0.5 * elapsed * elapsed
+      x += velocityVec.x * elapsed + accelerationVec.x * halfTimeSquared
+      y += velocityVec.y * elapsed + accelerationVec.y * halfTimeSquared
+      z += velocityVec.z * elapsed + accelerationVec.z * halfTimeSquared
+    }
+
+    if (colors && gradientStops) {
+      let colorSampleT = gradientBaseT
+      switch (gradientPlayback) {
+        case 'lifetime':
+          colorSampleT = wrap01(gradientBaseT + progress)
+          break
+        case 'scroll':
+          colorSampleT = gradientBaseT + gradientSpeed * elapsed
+          break
+        default:
+          colorSampleT = gradientBaseT
+          break
       }
-      case 'pulse': {
-        const cycles = Math.max(1, effectiveSpeed)
-        const oscillation =
-          Math.sin(progress * Math.PI * 2 * cycles + state.orbitOffset) * 0.5 + 0.5
-        const scaleFactor = pulseBase + oscillation * pulseRange
-        scaleX = state.scale.x * scaleFactor
-        scaleY = state.scale.y * scaleFactor
-        scaleZ = state.scale.z * scaleFactor
-        break
-      }
-      case 'orbit':
-      default: {
-        const orbitTurns = Math.max(1, effectiveSpeed)
-        const orbitAngle =
-          state.orbitOffset + progress * Math.PI * 2 * orbitTurns
-        x = Math.cos(orbitAngle) * state.radius
-        z = Math.sin(orbitAngle) * state.radius
-        y =
-          state.initialPosition.y +
-          Math.sin(progress * Math.PI * 2 * (state.floatFrequency || 1) + state.orbitOffset) *
-            state.floatStrength
-        break
-      }
+      const rgb = sampleGradient(gradientStops, colorSampleT, gradientSampleOptions)
+      const colorIndex = i * 3
+      colors[colorIndex] = rgb.r
+      colors[colorIndex + 1] = rgb.g
+      colors[colorIndex + 2] = rgb.b
     }
 
     const rotation = normalizeQuaternion(
@@ -905,7 +1459,12 @@ const buildAnimationKeyframes = (params, style, state, times) => {
     scales[i * 3 + 2] = scaleZ
   }
 
-  return { positions, rotations, scales }
+  const keyframeData = { positions, rotations, scales }
+  if (colors) {
+    keyframeData.colors = colors
+  }
+
+  return keyframeData
 }
 
 export const buildParticleSystemBlueprint = (params) => {
@@ -938,6 +1497,44 @@ export const buildParticleSystemBlueprint = (params) => {
     style.spiralAngularSpeed = style.spiralAngularSpeed ?? 1.1
   }
 
+  const wantsArcEmitter =
+    params.useArcEmitter !== undefined
+      ? params.useArcEmitter
+      : style.customEmitter === 'rainbowArc'
+
+  if (wantsArcEmitter) {
+    style.customEmitter = 'rainbowArc'
+  } else if (style.customEmitter === 'rainbowArc') {
+    style.customEmitter = null
+  }
+
+  if (style.customEmitter === 'rainbowArc') {
+    if (params.arcRadius !== undefined) {
+      style.arcRadius = params.arcRadius
+    }
+    if (params.arcStartAngle !== undefined) {
+      style.arcStartAngle = params.arcStartAngle
+    }
+    if (params.arcEndAngle !== undefined) {
+      style.arcEndAngle = params.arcEndAngle
+    }
+    if (params.arcThickness !== undefined) {
+      style.arcThickness = params.arcThickness
+    }
+    if (params.arcHeightOffset !== undefined) {
+      style.arcHeightOffset = params.arcHeightOffset
+    }
+    if (params.arcFlowSpeed !== undefined) {
+      style.arcFlowSpeed = params.arcFlowSpeed
+    }
+    if (params.arcFlowMode !== undefined) {
+      style.arcFlowMode = params.arcFlowMode
+    }
+    if (!['continuous', 'burst'].includes(style.arcFlowMode)) {
+      style.arcFlowMode = 'continuous'
+    }
+  }
+
   const count = Math.min(
     Math.max(Math.floor(params.particleCount) || 10, 8),
     style.maxParticles || 160
@@ -951,7 +1548,7 @@ export const buildParticleSystemBlueprint = (params) => {
 
   const particles = []
   for (let i = 0; i < count; i++) {
-    const state = buildParticleState(params, style, i)
+    const state = buildParticleState(params, style, i, count)
     const keyframes = buildAnimationKeyframes(params, style, state, times)
     particles.push({
       ...state,
