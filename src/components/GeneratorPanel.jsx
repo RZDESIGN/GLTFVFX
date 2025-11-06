@@ -1,4 +1,5 @@
 import './GeneratorPanel.css'
+import { PARTICLE_SHAPE_OPTIONS } from '../utils/effectBlueprint'
 
 const effectTypes = [
   { id: 'aura', name: 'Aura', icon: '✨' },
@@ -26,7 +27,11 @@ const animationTypes = [
   { id: 'pulse', name: 'Pulse' },
 ]
 
+const particleShapes = PARTICLE_SHAPE_OPTIONS
+
 const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
+  const activeParticleShape = params.particleShape || 'style'
+
   return (
     <div className="generator-panel">
       {/* Effect Type */}
@@ -200,6 +205,25 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
         </div>
       </div>
 
+      {/* Particle Shape */}
+      <div className="panel-section">
+        <h3 className="section-title">
+          <span>🧱</span>
+          Particle Shape
+        </h3>
+        <div className="button-group">
+          {particleShapes.map(shape => (
+            <button
+              key={shape.id}
+              className={`button-option ${activeParticleShape === shape.id ? 'active' : ''}`}
+              onClick={() => onParamChange('particleShape', shape.id)}
+            >
+              <span>{shape.icon ? `${shape.icon} ` : ''}{shape.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Emission Shape */}
       <div className="panel-section">
         <h3 className="section-title">
@@ -248,4 +272,3 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
 }
 
 export default GeneratorPanel
-

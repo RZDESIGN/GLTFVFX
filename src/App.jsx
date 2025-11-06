@@ -3,20 +3,27 @@ import './App.css'
 import VFXViewer from './components/VFXViewer'
 import GeneratorPanel from './components/GeneratorPanel'
 import { generateVFXGLTF } from './utils/vfxGenerator'
-import { EFFECT_PRESETS, getEffectPreset } from './utils/effectBlueprint'
+import { EFFECT_PRESETS, getEffectPreset, PARTICLE_SHAPE_OPTIONS } from './utils/effectBlueprint'
 
-const defaultPreset = getEffectPreset('fireball') || {
-  particleCount: 60,
-  particleSize: 0.22,
-  particleSpeed: 1.6,
-  spread: 1.1,
-  primaryColor: '#ff4500',
-  secondaryColor: '#ffa500',
-  emissionShape: 'sphere',
-  animationType: 'explode',
-  glowIntensity: 2.4,
-  lifetime: 1.8
-}
+const defaultPreset = (() => {
+  const preset = getEffectPreset('fireball') || {
+    particleCount: 60,
+    particleSize: 0.22,
+    particleSpeed: 1.6,
+    spread: 1.1,
+    primaryColor: '#ff4500',
+    secondaryColor: '#ffa500',
+    emissionShape: 'sphere',
+    animationType: 'explode',
+    glowIntensity: 2.4,
+    lifetime: 1.8
+  }
+
+  return {
+    particleShape: 'style',
+    ...preset
+  }
+})()
 
 const initialParams = {
   effectType: 'fireball',
@@ -33,6 +40,7 @@ function App() {
         return {
           ...prev,
           ...(preset || {}),
+          particleShape: (preset && preset.particleShape) || 'style',
           effectType: value
         }
       }
@@ -68,8 +76,11 @@ function App() {
 
   const handleRandomize = () => {
     const effectTypes = Object.keys(EFFECT_PRESETS)
+    const shapeIds = PARTICLE_SHAPE_OPTIONS.map(shape => shape.id)
     const selectedEffect = effectTypes[Math.floor(Math.random() * effectTypes.length)] || 'fireball'
     const preset = getEffectPreset(selectedEffect) || defaultPreset
+
+    const randomShape = shapeIds[Math.floor(Math.random() * shapeIds.length)] || 'style'
 
     const jitter = (value, minFactor, maxFactor) => {
       const factor = minFactor + Math.random() * (maxFactor - minFactor)
@@ -79,6 +90,7 @@ function App() {
     setVfxParams({
       effectType: selectedEffect,
       ...preset,
+      particleShape: randomShape,
       particleCount: Math.max(8, Math.round(jitter(preset.particleCount, 0.75, 1.25))),
       particleSize: Number(jitter(preset.particleSize, 0.85, 1.2).toFixed(2)),
       particleSpeed: Number(jitter(preset.particleSpeed, 0.8, 1.25).toFixed(2)),

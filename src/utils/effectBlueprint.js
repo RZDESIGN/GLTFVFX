@@ -77,6 +77,24 @@ const normalizeQuaternion = (quat) => {
 }
 
 const computeEmissionPosition = (shape, spread, random, style) => {
+  if (style.customEmitter === 'vortex') {
+    const height = style.vortexHeight ?? spread * 2.2
+    const layers = Math.max(1, Math.floor(style.vortexLayers ?? 14))
+    const layerIndex = Math.min(layers - 1, Math.floor(random(30) * layers))
+    const layerT = layers > 1 ? layerIndex / (layers - 1) : 0
+    const baseRadius =
+      (style.vortexBaseRadius ?? spread * 0.9) * (style.spreadMultiplier ?? 1)
+    const radiusFalloff = style.vortexRadiusFalloff ?? 1.2
+    const radius = baseRadius * Math.pow(Math.max(0.0001, 1 - layerT), radiusFalloff)
+    const angle = random(31) * Math.PI * 2
+    const radialJitter = (style.vortexJitter ?? 0.1) * baseRadius
+    const verticalJitter = (style.vortexVerticalJitter ?? 0.05) * height
+    const x = Math.cos(angle) * radius + (random(32) - 0.5) * radialJitter
+    const z = Math.sin(angle) * radius + (random(33) - 0.5) * radialJitter
+    const y = -height * 0.5 + layerT * height + (random(34) - 0.5) * verticalJitter
+    return { x, y, z, angle, radius, baseRadius, layerT, height }
+  }
+
   switch (shape) {
     case 'sphere': {
       const u = random(10)
@@ -143,6 +161,8 @@ const DEFAULT_STYLE = {
   driftStrength: 0,
   spiralHeight: 1.0,
   spiralTaper: 0.3,
+  spiralRevolutions: 3,
+  spiralAngularSpeed: 1,
   riseSpeed: 0.5,
   riseHeight: 3.2,
   explosionSpread: 2.0,
@@ -152,6 +172,68 @@ const DEFAULT_STYLE = {
   systemRotationSpeed: 0.35,
   maxParticles: 160,
   keyframeSteps: 6
+}
+
+const PARTICLE_SHAPE_DEFINITIONS = [
+  {
+    id: 'style',
+    name: 'Effect Default',
+    icon: '🎯'
+  },
+  {
+    id: 'cube',
+    name: 'Block',
+    icon: '🧊',
+    geometry: { type: 'box' }
+  },
+  {
+    id: 'sphere',
+    name: 'Sphere',
+    icon: '⚪',
+    geometry: { type: 'sphere', widthSegments: 16, heightSegments: 12 }
+  },
+  {
+    id: 'tetra',
+    name: 'Tetrahedron',
+    icon: '🔺',
+    geometry: { type: 'tetrahedron' }
+  },
+  {
+    id: 'octa',
+    name: 'Octahedron',
+    icon: '💠',
+    geometry: { type: 'octahedron', detail: 0 }
+  },
+  {
+    id: 'cylinder',
+    name: 'Cylinder',
+    icon: '🛢️',
+    geometry: { type: 'cylinder', topRadius: 0.25, bottomRadius: 0.25, height: 1.2, radialSegments: 18, openEnded: false },
+    styleOverrides: {
+      baseScale: [0.7, 1.4, 0.7]
+    }
+  },
+  {
+    id: 'plane',
+    name: 'Plane',
+    icon: '⬛',
+    geometry: { type: 'plane' },
+    styleOverrides: {
+      baseScale: [1.3, 0.1, 1.3],
+      scaleVariance: [0.15, 0.05, 0.15]
+    }
+  }
+]
+
+export const PARTICLE_SHAPE_OPTIONS = PARTICLE_SHAPE_DEFINITIONS.map(shape => ({
+  id: shape.id,
+  name: shape.name,
+  icon: shape.icon
+}))
+
+export const getParticleShapeDefinition = (shapeId) => {
+  if (!shapeId || shapeId === 'style') return null
+  return PARTICLE_SHAPE_DEFINITIONS.find(shape => shape.id === shapeId) || null
 }
 
 const EFFECT_STYLES = {
@@ -257,33 +339,45 @@ const EFFECT_STYLES = {
     maxParticles: 90
   },
   tornado: {
-    geometry: { type: 'cylinder', topRadius: 0.1, bottomRadius: 0.35, height: 1.1, radialSegments: 14, openEnded: true },
-    baseScale: [0.6, 2.5, 0.6],
-    scaleVariance: [0.3, 0.5, 0.3],
-    sizeMultiplier: 1.1,
-    sizeJitter: 0.4,
-    colorBias: 0.55,
-    colorVariance: 0.25,
-    opacityRange: [0.5, 0.85],
-    emissiveMultiplier: 1.8,
-    emissiveVariance: 0.25,
-    roughness: 0.4,
-    metalness: 0.12,
+    customEmitter: 'vortex',
+    geometry: { type: 'cylinder', topRadius: 0.08, bottomRadius: 0.4, height: 1.4, radialSegments: 20, openEnded: true },
+    baseScale: [0.35, 2.8, 0.35],
+    scaleVariance: [0.25, 0.65, 0.25],
+    sizeMultiplier: 1.0,
+    sizeJitter: 0.28,
+    colorBias: 0.52,
+    colorVariance: 0.22,
+    opacityRange: [0.45, 0.85],
+    emissiveMultiplier: 1.6,
+    emissiveVariance: 0.22,
+    roughness: 0.48,
+    metalness: 0.1,
     alphaMode: 'BLEND',
     depthWrite: false,
-    floatStrength: 0.32,
-    floatFrequency: 3.1,
-    verticalJitter: 1.1,
-    radialJitter: 0.25,
-    heightBias: 0.6,
-    spreadMultiplier: 1.4,
-    spinRates: [1.1, 2.2, 1.2],
-    speedVariance: 0.2,
-    spiralHeight: 2.6,
-    spiralTaper: 0.45,
-    driftStrength: 0.18,
-    systemRotationSpeed: 0.55,
-    maxParticles: 140
+    floatStrength: 0.14,
+    floatFrequency: 2.8,
+    verticalJitter: 0.4,
+    radialJitter: 0.08,
+    spreadMultiplier: 1.25,
+    spinRates: [0.9, 2.4, 1],
+    speedVariance: 0.24,
+    spiralHeight: 3.2,
+    spiralTaper: 0.55,
+    spiralRevolutions: 5.5,
+    spiralAngularSpeed: 1.1,
+    driftStrength: 0.12,
+    vortexHeight: 3.6,
+    vortexBaseRadius: 1.35,
+    vortexRadiusFalloff: 1.6,
+    vortexLayers: 20,
+    vortexLayerDrift: 0.85,
+    vortexJitter: 0.1,
+    vortexVerticalJitter: 0.06,
+    vortexSway: 0.12,
+    vortexSwaySpeed: 1.3,
+    vortexSwayRadius: 0.08,
+    systemRotationSpeed: 0.48,
+    maxParticles: 150
   },
   sparkles: {
     geometry: { type: 'tetrahedron' },
@@ -384,7 +478,8 @@ export const EFFECT_PRESETS = {
     emissionShape: 'sphere',
     animationType: 'orbit',
     glowIntensity: 2.6,
-    lifetime: 3
+    lifetime: 3,
+    particleShape: 'style'
   },
   fireball: {
     particleCount: 70,
@@ -396,7 +491,8 @@ export const EFFECT_PRESETS = {
     emissionShape: 'sphere',
     animationType: 'explode',
     glowIntensity: 3.4,
-    lifetime: 1.6
+    lifetime: 1.6,
+    particleShape: 'style'
   },
   ice: {
     particleCount: 65,
@@ -408,7 +504,8 @@ export const EFFECT_PRESETS = {
     emissionShape: 'cone',
     animationType: 'rise',
     glowIntensity: 1.8,
-    lifetime: 2.8
+    lifetime: 2.8,
+    particleShape: 'style'
   },
   'ground-smash': {
     particleCount: 50,
@@ -420,19 +517,21 @@ export const EFFECT_PRESETS = {
     emissionShape: 'box',
     animationType: 'explode',
     glowIntensity: 1.2,
-    lifetime: 1.4
+    lifetime: 1.4,
+    particleShape: 'style'
   },
   tornado: {
-    particleCount: 110,
-    particleSize: 0.19,
-    particleSpeed: 1.6,
-    spread: 1.8,
+    particleCount: 140,
+    particleSize: 0.17,
+    particleSpeed: 1.9,
+    spread: 1.5,
     primaryColor: '#7dd8ff',
     secondaryColor: '#e0f7ff',
     emissionShape: 'cone',
     animationType: 'spiral',
-    glowIntensity: 2.2,
-    lifetime: 3.4
+    glowIntensity: 2.0,
+    lifetime: 3.8,
+    particleShape: 'style'
   },
   sparkles: {
     particleCount: 120,
@@ -444,7 +543,8 @@ export const EFFECT_PRESETS = {
     emissionShape: 'ring',
     animationType: 'pulse',
     glowIntensity: 3,
-    lifetime: 2.2
+    lifetime: 2.2,
+    particleShape: 'style'
   },
   smoke: {
     particleCount: 85,
@@ -456,7 +556,8 @@ export const EFFECT_PRESETS = {
     emissionShape: 'sphere',
     animationType: 'rise',
     glowIntensity: 0.9,
-    lifetime: 3.6
+    lifetime: 3.6,
+    particleShape: 'style'
   },
   'energy-beam': {
     particleCount: 70,
@@ -468,7 +569,8 @@ export const EFFECT_PRESETS = {
     emissionShape: 'ring',
     animationType: 'pulse',
     glowIntensity: 3.2,
-    lifetime: 2.6
+    lifetime: 2.6,
+    particleShape: 'style'
   }
 }
 
@@ -543,15 +645,38 @@ const buildParticleState = (params, style, index) => {
     style
   )
 
-  let { x, y, z } = emission
-  x *= 1 + (random(8) - 0.5) * (style.radialJitter ?? 0)
-  z *= 1 + (random(9) - 0.5) * (style.radialJitter ?? 0)
-  y += (random(10) - 0.5) * (style.verticalJitter ?? 0)
+  let {
+    x,
+    y,
+    z,
+    angle: emissionAngle,
+    radius: emissionRadius,
+    baseRadius: emissionBaseRadius,
+    layerT: emissionLayer,
+    height: emissionHeight
+  } = emission
+
+  if (style.customEmitter === 'vortex') {
+    const radialJitterScale = (style.radialJitter ?? 0) * 0.3
+    const verticalJitterScale = (style.verticalJitter ?? 0) * 0.3
+    x *= 1 + (random(8) - 0.5) * radialJitterScale
+    z *= 1 + (random(9) - 0.5) * radialJitterScale
+    y += (random(10) - 0.5) * verticalJitterScale
+  } else {
+    x *= 1 + (random(8) - 0.5) * (style.radialJitter ?? 0)
+    z *= 1 + (random(9) - 0.5) * (style.radialJitter ?? 0)
+    y += (random(10) - 0.5) * (style.verticalJitter ?? 0)
+  }
+
   y += style.heightBias ?? 0
 
-  const radius = Math.hypot(x, z)
-  const angle = Math.atan2(z, x)
-  const orbitOffset = random(11) * Math.PI * 2
+  const radius = emissionRadius ?? Math.hypot(x, z)
+  const baseRadius = emissionBaseRadius ?? radius
+  const angle = emissionAngle ?? Math.atan2(z, x)
+  const orbitOffset =
+    style.customEmitter === 'vortex'
+      ? (emissionAngle ?? 0) + random(11) * Math.PI * 0.6
+      : random(11) * Math.PI * 2
   const floatStrength =
     (style.floatStrength ?? 0.2) * (0.7 + random(12) * 0.6)
   const floatFrequency =
@@ -581,6 +706,7 @@ const buildParticleState = (params, style, index) => {
     scale,
     initialPosition: { x, y, z },
     radius,
+    baseRadius,
     angle,
     orbitOffset,
     floatStrength,
@@ -590,7 +716,9 @@ const buildParticleState = (params, style, index) => {
     driftAmplitude,
     driftPhase,
     swirlPhase,
-    sizeScalar
+    sizeScalar,
+    layerT: emissionLayer ?? random(20),
+    emitterHeight: emissionHeight ?? null
   }
 }
 
@@ -600,7 +728,6 @@ const buildAnimationKeyframes = (params, style, state, times) => {
   const scales = new Float32Array(times.length * 3)
 
   const spiralHeight = style.spiralHeight ?? 1
-  const spiralTaper = style.spiralTaper ?? 0.3
   const riseSpeed = style.riseSpeed ?? 0.5
   const riseHeight = style.riseHeight ?? 3
   const explosionSpread = style.explosionSpread ?? 2
@@ -650,15 +777,61 @@ const buildAnimationKeyframes = (params, style, state, times) => {
         break
       }
       case 'spiral': {
-        const angle =
-          elapsed * effectiveSpeed + state.orbitOffset + state.swirlPhase
-        const taper = 1 - Math.min(1, elapsed / params.lifetime) * spiralTaper
-        const spiralRadius = state.radius * taper
-        x = Math.cos(angle) * spiralRadius
-        z = Math.sin(angle) * spiralRadius
-        y =
-          state.initialPosition.y +
-          ((angle % (Math.PI * 2)) / (Math.PI * 2)) * spiralHeight
+        const angularSpeed =
+          effectiveSpeed *
+          (style.spiralAngularSpeed ?? 1) *
+          ((style.spiralRevolutions ?? 3) / 3)
+        const angle = elapsed * angularSpeed + state.orbitOffset + state.swirlPhase
+        const revolutions = angle / (Math.PI * 2)
+        const normalized = revolutions - Math.floor(revolutions)
+
+        if (style.customEmitter === 'vortex') {
+          const height = style.vortexHeight ?? style.spiralHeight ?? 2
+          const drift = style.vortexLayerDrift ?? 0.75
+          let layerProgress = (state.layerT ?? 0) + revolutions * drift
+          layerProgress = layerProgress - Math.floor(layerProgress)
+
+          const baseRadius =
+            style.vortexBaseRadius ?? state.baseRadius ?? state.radius
+          const falloff = style.vortexRadiusFalloff ?? 1.25
+          const taper = Math.max(0.2, 1 - normalized * (style.spiralTaper ?? 0.3))
+          let swirlRadius =
+            baseRadius *
+            Math.pow(Math.max(0.0001, 1 - layerProgress), falloff) *
+            taper
+
+          const swayRadius = style.vortexSwayRadius ?? 0
+          if (swayRadius > 0) {
+            swirlRadius += Math.sin(angle * 0.5 + state.swirlPhase) * swayRadius
+          }
+
+          x = Math.cos(angle) * swirlRadius
+          z = Math.sin(angle) * swirlRadius
+          y = -height * 0.5 + layerProgress * height
+
+          const sway = style.vortexSway ?? 0
+          if (sway !== 0) {
+            y += Math.sin(
+              angle * (style.vortexSwaySpeed ?? 1.5) + state.swirlPhase
+            ) * sway
+          }
+
+          const squeeze = 0.85 + (1 - layerProgress) * 0.25
+          scaleX = state.scale.x * squeeze
+          scaleZ = state.scale.z * squeeze
+          scaleY =
+            state.scale.y *
+            (1 + Math.sin(angle * 0.35 + state.swirlPhase) * 0.15)
+        } else {
+          const taper = Math.max(0.1, 1 - normalized * (style.spiralTaper ?? 0.3))
+          const spiralRadius = state.radius * taper
+          x = Math.cos(angle) * spiralRadius
+          z = Math.sin(angle) * spiralRadius
+          y =
+            state.initialPosition.y +
+            normalized * spiralHeight
+        }
+
         break
       }
       case 'pulse': {
@@ -716,6 +889,26 @@ const buildAnimationKeyframes = (params, style, state, times) => {
 
 export const buildParticleSystemBlueprint = (params) => {
   const style = getEffectStyle(params.effectType)
+  const shapeDefinition = getParticleShapeDefinition(params.particleShape)
+
+  if (shapeDefinition && shapeDefinition.geometry) {
+    style.geometry = { ...shapeDefinition.geometry }
+  }
+
+  if (shapeDefinition && shapeDefinition.styleOverrides) {
+    const overrides = shapeDefinition.styleOverrides
+    Object.keys(overrides).forEach(key => {
+      const value = overrides[key]
+      if (Array.isArray(value)) {
+        style[key] = [...value]
+      } else if (value && typeof value === 'object') {
+        style[key] = { ...value }
+      } else {
+        style[key] = value
+      }
+    })
+  }
+
   const count = Math.min(
     Math.max(Math.floor(params.particleCount) || 10, 8),
     style.maxParticles || 160

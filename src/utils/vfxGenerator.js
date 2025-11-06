@@ -16,6 +16,8 @@ const createGeometryFromConfig = (config = {}) => {
       return new THREE.OctahedronGeometry(0.5, config.detail ?? 0)
     case 'tetrahedron':
       return new THREE.TetrahedronGeometry(0.5, config.detail ?? 0)
+    case 'plane':
+      return new THREE.PlaneGeometry(1, 1)
     case 'cylinder': {
       const topRadius = config.topRadius ?? 0.2
       const bottomRadius = config.bottomRadius ?? topRadius
