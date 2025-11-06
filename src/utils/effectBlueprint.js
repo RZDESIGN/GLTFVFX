@@ -78,21 +78,39 @@ const normalizeQuaternion = (quat) => {
 
 const computeEmissionPosition = (shape, spread, random, style) => {
   if (style.customEmitter === 'vortex') {
-    const height = style.vortexHeight ?? spread * 2.2
-    const layers = Math.max(1, Math.floor(style.vortexLayers ?? 14))
+    const height = style.vortexHeight ?? spread * 2.3
+    const layers = Math.max(2, Math.floor(style.vortexLayers ?? 16))
     const layerIndex = Math.min(layers - 1, Math.floor(random(30) * layers))
     const layerT = layers > 1 ? layerIndex / (layers - 1) : 0
-    const baseRadius =
-      (style.vortexBaseRadius ?? spread * 0.9) * (style.spreadMultiplier ?? 1)
-    const radiusFalloff = style.vortexRadiusFalloff ?? 1.2
-    const radius = baseRadius * Math.pow(Math.max(0.0001, 1 - layerT), radiusFalloff)
+
+    const maxRadius =
+      (style.vortexBaseRadius ?? spread * 1.05) * (style.spreadMultiplier ?? 1)
+    const minRadius = Math.max(
+      0.02,
+      style.vortexTipRadius ?? maxRadius * 0.18
+    )
+    const radiusFalloff = style.vortexRadiusFalloff ?? 1.35
+    const radiusRange = Math.max(0.001, maxRadius - minRadius)
+    const radius = minRadius + radiusRange * Math.pow(layerT, radiusFalloff)
+
     const angle = random(31) * Math.PI * 2
-    const radialJitter = (style.vortexJitter ?? 0.1) * baseRadius
-    const verticalJitter = (style.vortexVerticalJitter ?? 0.05) * height
+    const radialJitter = (style.vortexJitter ?? 0.06) * maxRadius
+    const verticalJitter = (style.vortexVerticalJitter ?? 0.04) * height
     const x = Math.cos(angle) * radius + (random(32) - 0.5) * radialJitter
     const z = Math.sin(angle) * radius + (random(33) - 0.5) * radialJitter
     const y = -height * 0.5 + layerT * height + (random(34) - 0.5) * verticalJitter
-    return { x, y, z, angle, radius, baseRadius, layerT, height }
+
+    return {
+      x,
+      y,
+      z,
+      angle,
+      radius,
+      baseRadius: maxRadius,
+      tipRadius: minRadius,
+      layerT,
+      height
+    }
   }
 
   switch (shape) {
@@ -367,15 +385,16 @@ const EFFECT_STYLES = {
     spiralAngularSpeed: 1.1,
     driftStrength: 0.12,
     vortexHeight: 3.6,
-    vortexBaseRadius: 1.35,
-    vortexRadiusFalloff: 1.6,
+    vortexBaseRadius: 1.45,
+    vortexTipRadius: 0.18,
+    vortexRadiusFalloff: 1.4,
     vortexLayers: 20,
     vortexLayerDrift: 0.85,
-    vortexJitter: 0.1,
-    vortexVerticalJitter: 0.06,
-    vortexSway: 0.12,
-    vortexSwaySpeed: 1.3,
-    vortexSwayRadius: 0.08,
+    vortexJitter: 0.08,
+    vortexVerticalJitter: 0.05,
+    vortexSway: 0.1,
+    vortexSwaySpeed: 1.4,
+    vortexSwayRadius: 0.06,
     systemRotationSpeed: 0.48,
     maxParticles: 150
   },
@@ -652,6 +671,7 @@ const buildParticleState = (params, style, index) => {
     angle: emissionAngle,
     radius: emissionRadius,
     baseRadius: emissionBaseRadius,
+    tipRadius: emissionTipRadius,
     layerT: emissionLayer,
     height: emissionHeight
   } = emission
@@ -672,6 +692,7 @@ const buildParticleState = (params, style, index) => {
 
   const radius = emissionRadius ?? Math.hypot(x, z)
   const baseRadius = emissionBaseRadius ?? radius
+  const tipRadius = emissionTipRadius ?? Math.max(0.02, baseRadius * 0.15)
   const angle = emissionAngle ?? Math.atan2(z, x)
   const orbitOffset =
     style.customEmitter === 'vortex'
@@ -707,6 +728,7 @@ const buildParticleState = (params, style, index) => {
     initialPosition: { x, y, z },
     radius,
     baseRadius,
+    tipRadius,
     angle,
     orbitOffset,
     floatStrength,
@@ -738,9 +760,12 @@ const buildAnimationKeyframes = (params, style, state, times) => {
 
   const effectiveSpeedMultiplier = 1 + state.speedOffset
 
-  for (let i = 0; i < times.length - 1; i++) {
+  const duration = params.lifetime > 0 ? params.lifetime : 1
+
+  for (let i = 0; i < times.length; i++) {
     const time = times[i]
     const elapsed = time
+    const progress = duration === 0 ? 0 : Math.min(1, elapsed / duration)
     const effectiveSpeed = params.particleSpeed * effectiveSpeedMultiplier
 
     let x = state.initialPosition.x
@@ -753,19 +778,19 @@ const buildAnimationKeyframes = (params, style, state, times) => {
 
     switch (params.animationType) {
       case 'rise': {
-        const riseProgress = (elapsed * effectiveSpeed * riseSpeed) % riseHeight
+        const riseProgress = progress * riseHeight * riseSpeed
         y = state.initialPosition.y + riseProgress
 
         if (driftStrength > 0) {
           const drift = driftStrength
-          x += Math.sin(elapsed * 0.45 + state.driftPhase) * drift
-          z += Math.cos(elapsed * 0.35 + state.driftPhase) * drift
+          const driftAngle = progress * Math.PI * 2 + state.driftPhase
+          x += Math.sin(driftAngle) * drift
+          z += Math.cos(driftAngle * 0.8) * drift
         }
         break
       }
       case 'explode': {
-        const rawProgress = (elapsed * effectiveSpeed) % params.lifetime
-        const normalized = Math.min(1, rawProgress / params.lifetime)
+        const normalized = progress
         const expansion = 1 + normalized * explosionSpread
         x = state.initialPosition.x * expansion
         y = state.initialPosition.y * expansion
@@ -777,32 +802,33 @@ const buildAnimationKeyframes = (params, style, state, times) => {
         break
       }
       case 'spiral': {
-        const angularSpeed =
-          effectiveSpeed *
-          (style.spiralAngularSpeed ?? 1) *
-          ((style.spiralRevolutions ?? 3) / 3)
-        const angle = elapsed * angularSpeed + state.orbitOffset + state.swirlPhase
-        const revolutions = angle / (Math.PI * 2)
-        const normalized = revolutions - Math.floor(revolutions)
+        const spiralTurns = (style.spiralRevolutions ?? 4.5) * Math.max(0.4, effectiveSpeed * (style.spiralAngularSpeed ?? 1))
+        const revolutions = spiralTurns * progress
+        const angle = state.orbitOffset + state.swirlPhase + revolutions * Math.PI * 2
+        const fractionalRevolution = revolutions - Math.floor(revolutions)
 
         if (style.customEmitter === 'vortex') {
           const height = style.vortexHeight ?? style.spiralHeight ?? 2
           const drift = style.vortexLayerDrift ?? 0.75
-          let layerProgress = (state.layerT ?? 0) + revolutions * drift
-          layerProgress = layerProgress - Math.floor(layerProgress)
+          const totalProgress = (state.layerT ?? 0) + revolutions * drift
+          const layerProgress = totalProgress - Math.floor(totalProgress)
 
-          const baseRadius =
-            style.vortexBaseRadius ?? state.baseRadius ?? state.radius
-          const falloff = style.vortexRadiusFalloff ?? 1.25
-          const taper = Math.max(0.2, 1 - normalized * (style.spiralTaper ?? 0.3))
+          const maxRadius = style.vortexBaseRadius ?? state.baseRadius ?? state.radius
+          const minRadius = Math.max(
+            0.02,
+            style.vortexTipRadius ?? state.tipRadius ?? maxRadius * 0.15
+          )
+          const falloff = style.vortexRadiusFalloff ?? 1.3
+          const radiusRange = Math.max(0.001, maxRadius - minRadius)
           let swirlRadius =
-            baseRadius *
-            Math.pow(Math.max(0.0001, 1 - layerProgress), falloff) *
-            taper
+            minRadius + radiusRange * Math.pow(layerProgress, falloff)
+
+          const taper = 1 - (style.spiralTaper ?? 0.35) * (1 - layerProgress)
+          swirlRadius *= Math.max(0.25, taper)
 
           const swayRadius = style.vortexSwayRadius ?? 0
           if (swayRadius > 0) {
-            swirlRadius += Math.sin(angle * 0.5 + state.swirlPhase) * swayRadius
+            swirlRadius += Math.sin(angle * 0.35 + state.swirlPhase) * swayRadius
           }
 
           x = Math.cos(angle) * swirlRadius
@@ -816,27 +842,26 @@ const buildAnimationKeyframes = (params, style, state, times) => {
             ) * sway
           }
 
-          const squeeze = 0.85 + (1 - layerProgress) * 0.25
-          scaleX = state.scale.x * squeeze
-          scaleZ = state.scale.z * squeeze
-          scaleY =
-            state.scale.y *
-            (1 + Math.sin(angle * 0.35 + state.swirlPhase) * 0.15)
+          const radialScale = 0.65 + layerProgress * 0.45
+          scaleX = state.scale.x * radialScale
+          scaleZ = state.scale.z * radialScale
+          scaleY = state.scale.y * (0.85 + (1 - layerProgress) * 0.25)
         } else {
-          const taper = Math.max(0.1, 1 - normalized * (style.spiralTaper ?? 0.3))
+          const taper = Math.max(0.2, 1 - fractionalRevolution * (style.spiralTaper ?? 0.3))
           const spiralRadius = state.radius * taper
           x = Math.cos(angle) * spiralRadius
           z = Math.sin(angle) * spiralRadius
           y =
             state.initialPosition.y +
-            normalized * spiralHeight
+            fractionalRevolution * spiralHeight
         }
 
         break
       }
       case 'pulse': {
+        const cycles = Math.max(1, effectiveSpeed)
         const oscillation =
-          Math.sin(elapsed * effectiveSpeed * 2 + state.orbitOffset) * 0.5 + 0.5
+          Math.sin(progress * Math.PI * 2 * cycles + state.orbitOffset) * 0.5 + 0.5
         const scaleFactor = pulseBase + oscillation * pulseRange
         scaleX = state.scale.x * scaleFactor
         scaleY = state.scale.y * scaleFactor
@@ -845,13 +870,14 @@ const buildAnimationKeyframes = (params, style, state, times) => {
       }
       case 'orbit':
       default: {
+        const orbitTurns = Math.max(1, effectiveSpeed)
         const orbitAngle =
-          elapsed * effectiveSpeed + state.orbitOffset
+          state.orbitOffset + progress * Math.PI * 2 * orbitTurns
         x = Math.cos(orbitAngle) * state.radius
         z = Math.sin(orbitAngle) * state.radius
         y =
           state.initialPosition.y +
-          Math.sin(elapsed * state.floatFrequency + state.orbitOffset) *
+          Math.sin(progress * Math.PI * 2 * (state.floatFrequency || 1) + state.orbitOffset) *
             state.floatStrength
         break
       }
@@ -879,11 +905,6 @@ const buildAnimationKeyframes = (params, style, state, times) => {
     scales[i * 3 + 2] = scaleZ
   }
 
-  // Ensure seamless looping by repeating the first frame at the end.
-  positions.set(positions.slice(0, 3), (times.length - 1) * 3)
-  rotations.set(rotations.slice(0, 4), (times.length - 1) * 4)
-  scales.set(scales.slice(0, 3), (times.length - 1) * 3)
-
   return { positions, rotations, scales }
 }
 
@@ -907,6 +928,14 @@ export const buildParticleSystemBlueprint = (params) => {
         style[key] = value
       }
     })
+  }
+
+  if (style.customEmitter === 'vortex') {
+    if (!style.spiralHeight && style.vortexHeight) {
+      style.spiralHeight = style.vortexHeight
+    }
+    style.spiralRevolutions = style.spiralRevolutions ?? 6
+    style.spiralAngularSpeed = style.spiralAngularSpeed ?? 1.1
   }
 
   const count = Math.min(
