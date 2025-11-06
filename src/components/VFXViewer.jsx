@@ -5,6 +5,9 @@ import { buildParticleSystemBlueprint } from '../utils/effectBlueprint'
 
 const geometryCache = new Map()
 
+const tempQuatA = new THREE.Quaternion()
+const tempQuatB = new THREE.Quaternion()
+
 const getGeometryKey = (geometryConfig = {}) => JSON.stringify(geometryConfig)
 
 const createGeometryFromConfig = (config = {}) => {
@@ -67,7 +70,6 @@ const createMaterialForParticle = (style, state) => {
   })
 
   material.side = THREE.DoubleSide
-
   return material
 }
 
@@ -80,6 +82,102 @@ const disposeMaterial = (material) => {
   material.dispose()
 }
 
+const findSegment = (times, time) => {
+  const lastIndex = times.length - 1
+  if (lastIndex <= 0) {
+    return { index: 0, alpha: 0 }
+  }
+
+  if (time <= times[0]) {
+    return { index: 0, alpha: 0 }
+  }
+
+  if (time >= times[lastIndex]) {
+    return { index: lastIndex - 1, alpha: 1 }
+  }
+
+  for (let i = 0; i < lastIndex; i++) {
+    const start = times[i]
+    const end = times[i + 1]
+    if (time >= start && time <= end) {
+      const span = end - start || 1
+      const alpha = (time - start) / span
+      return { index: i, alpha }
+    }
+  }
+
+  return { index: lastIndex - 1, alpha: 1 }
+}
+
+const sampleVector3 = (times, values, time, target) => {
+  if (!times || times.length === 0 || !values || values.length === 0) {
+    target.set(0, 0, 0)
+    return target
+  }
+
+  if (times.length === 1) {
+    target.set(values[0] || 0, values[1] || 0, values[2] || 0)
+    return target
+  }
+
+  const { index, alpha } = findSegment(times, time)
+  const stride = 3
+  const offset = index * stride
+  const nextOffset = offset + stride
+
+  if (nextOffset >= values.length) {
+    target.set(values[offset] || 0, values[offset + 1] || 0, values[offset + 2] || 0)
+    return target
+  }
+
+  target.set(
+    values[offset] + (values[nextOffset] - values[offset]) * alpha,
+    values[offset + 1] + (values[nextOffset + 1] - values[offset + 1]) * alpha,
+    values[offset + 2] + (values[nextOffset + 2] - values[offset + 2]) * alpha
+  )
+
+  return target
+}
+
+const sampleQuaternion = (times, values, time, target) => {
+  if (!times || times.length === 0 || !values || values.length === 0) {
+    target.identity()
+    return target
+  }
+
+  if (times.length === 1) {
+    target.set(values[0] || 0, values[1] || 0, values[2] || 0, values[3] || 1)
+    return target
+  }
+
+  const { index, alpha } = findSegment(times, time)
+  const stride = 4
+  const offset = index * stride
+  const nextOffset = offset + stride
+
+  tempQuatA.set(
+    values[offset] || 0,
+    values[offset + 1] || 0,
+    values[offset + 2] || 0,
+    values[offset + 3] || 1
+  )
+
+  if (nextOffset >= values.length) {
+    target.copy(tempQuatA)
+    return target
+  }
+
+  tempQuatB.set(
+    values[nextOffset] || 0,
+    values[nextOffset + 1] || 0,
+    values[nextOffset + 2] || 0,
+    values[nextOffset + 3] || 1
+  )
+
+  target.copy(tempQuatA).slerp(tempQuatB, alpha)
+  return target
+}
+
 const VFXViewer = ({ params }) => {
   const canvasRef = useRef(null)
   const sceneRef = useRef(null)
@@ -88,9 +186,10 @@ const VFXViewer = ({ params }) => {
   const particleSystemRef = useRef(null)
   const animationIdRef = useRef(null)
   const clockRef = useRef(new THREE.Clock())
+  const blueprintRef = useRef(null)
+  const effectStartTimeRef = useRef(0)
   const [particleCount, setParticleCount] = useState(0)
 
-  // Mouse interaction state
   const isDragging = useRef(false)
   const lastMouseX = useRef(0)
   const autoRotate = useRef(true)
@@ -190,115 +289,29 @@ const VFXViewer = ({ params }) => {
       const delta = clockRef.current.getDelta()
       const elapsed = clockRef.current.getElapsedTime()
 
-      if (particleSystemRef.current) {
-        const style = particleSystemRef.current.userData.style || {}
-        const riseSpeed = style.riseSpeed ?? 0.5
-        const riseHeight = style.riseHeight ?? 3
-        const spiralHeight = style.spiralHeight ?? 1.2
-        const spiralTaper = style.spiralTaper ?? 0.3
-        const explosionSpread = style.explosionSpread ?? 2
-        const explosionShrink = style.explosionShrink ?? 0.85
-        const pulseBase = style.pulseScaleBase ?? 0.55
-        const pulseRange = style.pulseScaleRange ?? 0.75
+      const particleSystem = particleSystemRef.current
+      const blueprint = blueprintRef.current
 
-        particleSystemRef.current.children.forEach(particle => {
-          const data = particle.userData
-          const baseScale = data.baseScale
-          const effectiveSpeed = params.particleSpeed * (1 + (data.speedOffset || 0))
+      if (particleSystem && blueprint) {
+        const style = particleSystem.userData.style || {}
+        const times = blueprint.keyframeTimes
+        const duration = blueprint.duration && blueprint.duration > 0
+          ? blueprint.duration
+          : params.lifetime || 1
+        const localElapsed = Math.max(0, elapsed - effectStartTimeRef.current)
+        const playbackTime = duration > 0 ? localElapsed % duration : localElapsed
 
-          switch (params.animationType) {
-            case 'rise': {
-              const riseProgress = (elapsed * effectiveSpeed * riseSpeed) % riseHeight
-              particle.position.x =
-                data.initialX +
-                Math.sin(elapsed * 0.45 + (data.driftPhase || 0)) *
-                  (data.driftAmplitude || 0)
-              particle.position.z =
-                data.initialZ +
-                Math.cos(elapsed * 0.35 + (data.driftPhase || 0)) *
-                  (data.driftAmplitude || 0)
-              particle.position.y = data.initialY + riseProgress
-              particle.scale.set(baseScale.x, baseScale.y, baseScale.z)
-              break
-            }
-            case 'explode': {
-              const progress = (elapsed * effectiveSpeed) % params.lifetime
-              const normalized = Math.min(1, progress / params.lifetime)
-              const expansion = 1 + normalized * explosionSpread
-              particle.position.x = data.initialX * expansion
-              particle.position.y = data.initialY * expansion
-              particle.position.z = data.initialZ * expansion
-              const shrink = Math.max(0.12, 1 - normalized * explosionShrink)
-              particle.scale.set(
-                baseScale.x * shrink,
-                baseScale.y * shrink,
-                baseScale.z * shrink
-              )
-              break
-            }
-            case 'spiral': {
-              const angle =
-                elapsed * effectiveSpeed + data.orbitOffset + (data.swirlPhase || 0)
-              const taper = 1 - Math.min(1, elapsed / params.lifetime) * spiralTaper
-              const radius = data.radius * taper
-              particle.position.x = Math.cos(angle) * radius
-              particle.position.z = Math.sin(angle) * radius
-              particle.position.y =
-                data.initialY +
-                ((angle % (Math.PI * 2)) / (Math.PI * 2)) * spiralHeight
-              particle.scale.set(baseScale.x, baseScale.y, baseScale.z)
-              break
-            }
-            case 'pulse': {
-              const pulse =
-                Math.sin(elapsed * effectiveSpeed * 2 + data.orbitOffset) * 0.5 + 0.5
-              const scaleFactor = pulseBase + pulse * pulseRange
-              particle.scale.set(
-                baseScale.x * scaleFactor,
-                baseScale.y * scaleFactor,
-                baseScale.z * scaleFactor
-              )
-              particle.position.x =
-                data.initialX +
-                Math.sin(elapsed * 0.3 + (data.driftPhase || 0)) *
-                  (data.driftAmplitude || 0)
-              particle.position.z =
-                data.initialZ +
-                Math.cos(elapsed * 0.3 + (data.driftPhase || 0)) *
-                  (data.driftAmplitude || 0)
-              particle.position.y = data.initialY
-              break
-            }
-            case 'orbit':
-            default: {
-              const orbitAngle = elapsed * effectiveSpeed + data.orbitOffset
-              particle.position.x = Math.cos(orbitAngle) * data.radius
-              particle.position.z = Math.sin(orbitAngle) * data.radius
-              particle.position.y =
-                data.initialY +
-                Math.sin(
-                  elapsed * (data.floatFrequency || 2) + data.orbitOffset
-                ) *
-                  (data.floatStrength || 0)
-              particle.position.x +=
-                Math.sin(elapsed * 0.25 + (data.driftPhase || 0)) *
-                (data.driftAmplitude || 0)
-              particle.position.z +=
-                Math.cos(elapsed * 0.25 + (data.driftPhase || 0)) *
-                (data.driftAmplitude || 0)
-              particle.scale.set(baseScale.x, baseScale.y, baseScale.z)
-              break
-            }
-          }
+        particleSystem.children.forEach(particle => {
+          const keyframes = particle.userData.keyframes
+          if (!keyframes) return
 
-          particle.rotation.x += delta * (data.spinRates?.x || 0)
-          particle.rotation.y += delta * (data.spinRates?.y || 0)
-          particle.rotation.z += delta * (data.spinRates?.z || 0)
+          sampleVector3(times, keyframes.positions, playbackTime, particle.position)
+          sampleQuaternion(times, keyframes.rotations, playbackTime, particle.quaternion)
+          sampleVector3(times, keyframes.scales, playbackTime, particle.scale)
         })
 
         if (autoRotate.current) {
-          particleSystemRef.current.rotation.y +=
-            delta * (style.systemRotationSpeed ?? 0.35)
+          particleSystem.rotation.y += delta * (style.systemRotationSpeed ?? 0.35)
         }
       }
 
@@ -334,6 +347,8 @@ const VFXViewer = ({ params }) => {
 
     const blueprint = buildParticleSystemBlueprint(params)
     const { particles, style } = blueprint
+    blueprintRef.current = blueprint
+    effectStartTimeRef.current = clockRef.current.getElapsedTime()
 
     if (particleSystemRef.current) {
       const existing = particleSystemRef.current
@@ -353,28 +368,20 @@ const VFXViewer = ({ params }) => {
       const material = createMaterialForParticle(style, state)
       const particle = new THREE.Mesh(geometry, material)
       particle.name = `Particle_${state.index}`
-      particle.position.set(
-        state.initialPosition.x,
-        state.initialPosition.y,
-        state.initialPosition.z
-      )
-      particle.scale.set(state.scale.x, state.scale.y, state.scale.z)
+
+      const pos = state.keyframes.positions
+      const rot = state.keyframes.rotations
+      const scl = state.keyframes.scales
+
+      particle.position.set(pos[0], pos[1], pos[2])
+      particle.quaternion.set(rot[0], rot[1], rot[2], rot[3])
+      particle.scale.set(scl[0], scl[1], scl[2])
+
       particle.userData = {
         index: state.index,
-        radius: state.radius,
-        orbitOffset: state.orbitOffset,
-        floatStrength: state.floatStrength,
-        floatFrequency: state.floatFrequency,
-        initialX: state.initialPosition.x,
-        initialY: state.initialPosition.y,
-        initialZ: state.initialPosition.z,
-        baseScale: state.scale,
-        spinRates: state.spinRates,
-        speedOffset: state.speedOffset,
-        driftAmplitude: state.driftAmplitude,
-        driftPhase: state.driftPhase,
-        swirlPhase: state.swirlPhase
+        keyframes: state.keyframes
       }
+
       particleSystem.add(particle)
     })
 

@@ -743,6 +743,7 @@ export const buildParticleSystemBlueprint = (params) => {
     particles,
     system: {
       autoRotateSpeed: style.systemRotationSpeed ?? 0.35
-    }
+    },
+    duration: times.length > 0 ? times[times.length - 1] : params.lifetime
   }
 }
