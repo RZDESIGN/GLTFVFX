@@ -4,8 +4,8 @@
   background: transparent;
   backdrop-filter: none;
   border-left: none;
-  padding: 2rem;
-  overflow-y: auto;
+  padding: 0;
+  overflow-y: visible;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -20,7 +20,7 @@
 .section-title {
   font-size: 1rem;
   font-weight: 700;
-  color: white;
+  color: #e5e7eb;
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 0.5rem;
@@ -62,7 +62,7 @@
 
 .control-input:focus {
   outline: none;
-  border-color: rgba(102, 126, 234, 0.8);
+  border-color: rgba(251, 191, 36, 0.85);
   background: rgba(255, 255, 255, 0.15);
 }
 
@@ -85,7 +85,7 @@
   appearance: none;
   width: 18px;
   height: 18px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
   cursor: pointer;
   border-radius: 50%;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -94,7 +94,7 @@
 .range-input::-moz-range-thumb {
   width: 18px;
   height: 18px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
   cursor: pointer;
   border-radius: 50%;
   border: none;
@@ -137,7 +137,9 @@
   font-family: monospace;
 }
 
+/* In-panel Randomize is hidden on desktop; shown on mobile */
 .randomize-button {
+  display: none;
   width: 100%;
   padding: 1rem;
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
@@ -146,7 +148,6 @@
   border-radius: 12px;
   font-weight: 700;
   font-size: 1rem;
-  display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
@@ -180,7 +181,7 @@
 }
 
 .button-option.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
   border-color: transparent;
 }
 
@@ -213,9 +214,9 @@
 }
 
 .effect-type-button.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
   border-color: transparent;
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 15px rgba(251, 191, 36, 0.35);
 }
 
 .effect-icon {
@@ -282,7 +283,7 @@
 }
 
 .toggle-input input:checked + .toggle-display {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
 }
 
 .toggle-input input:checked + .toggle-display::after {
@@ -322,7 +323,7 @@
     border-left: none;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     max-height: 50vh;
-    padding: 1rem;
+    padding: 1rem 0 0;
   }
 
   .effect-type-grid {
@@ -349,5 +350,10 @@
 
   .effect-animation-label {
     font-size: 0.6rem;
+  }
+
+  .randomize-button {
+    display: flex;
+    margin-top: 0.75rem;
   }
 }

@@ -55,6 +55,29 @@
   box-shadow: 0 12px 28px rgba(251, 191, 36, 0.3), 0 3px 8px rgba(0,0,0,0.25);
 }
 
+/* Floating Randomize button (desktop) */
+.randomize-fab {
+  position: fixed;
+  bottom: 16px;
+  left: calc(16px + min(420px, 92vw) + 12px);
+  z-index: 55;
+  padding: 0.7rem 1.1rem;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  box-shadow: 0 10px 26px rgba(245, 87, 108, 0.35), 0 2px 6px rgba(0, 0, 0, 0.25);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.randomize-fab:hover {
+  box-shadow: 0 14px 30px rgba(245, 87, 108, 0.45), 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
 /* Floating brand in top-left */
 .brand-badge {
   position: fixed;
@@ -180,5 +203,10 @@
     top: 8px;
     right: 8px;
     bottom: auto;
+  }
+
+  /* Hide floating Randomize on mobile; show in-panel version there */
+  .randomize-fab {
+    display: none;
   }
 }

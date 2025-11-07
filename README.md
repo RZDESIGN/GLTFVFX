@@ -55,37 +55,6 @@ Open your browser to `http://localhost:3000`
 npm run build
 ```
 
-### Deploy to Production (gltfvfx.fun)
-
-The project includes an automated deployment script for Hostinger:
-
-1. **Copy the environment template:**
-   ```bash
-   cp .env.example .env
-   ```
-
-2. **Edit `.env` with your Hostinger credentials:**
-   - Get your SSH credentials from Hostinger's control panel
-   - SSH Port is typically `65002` for Hostinger
-   - Remote directory is usually `public_html`
-
-3. **Deploy:**
-   ```bash
-   ./deploy-to-hostinger.sh
-   ```
-
-The script will:
-- Build your project (`npm run build`)
-- Upload files to https://gltfvfx.fun/ via SSH
-- Sync only changed files for faster deployments
-
-**Getting Hostinger SSH Credentials:**
-1. Log into your Hostinger account
-2. Go to your hosting dashboard
-3. Find "SSH Access" or "Advanced" section
-4. Copy your SSH username, password, and port (usually 65002)
-5. Update your `.env` file with these credentials
-
 ## Usage
 
 1. **Select an Effect Type** - Choose from 8 different VFX types

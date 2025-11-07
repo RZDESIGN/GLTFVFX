@@ -4,6 +4,7 @@ import VFXViewer from './components/VFXViewer'
 import GeneratorPanel from './components/GeneratorPanel'
 import { generateVFXGLTF } from './utils/vfxGenerator'
 import { EFFECT_PRESETS, getEffectPreset, PARTICLE_SHAPE_OPTIONS } from './utils/effectBlueprint'
+import { ARC_FLOW_MODE_OPTIONS, EMISSION_SHAPE_OPTIONS, MOTION_DIRECTION_OPTIONS } from './constants/uiOptions'
 
 const PARAM_FALLBACKS = {
   emissionSurfaceOnly: false,
@@ -50,6 +51,47 @@ const defaultPreset = (() => {
 const initialParams = {
   effectType: 'fireball',
   ...defaultPreset
+}
+
+const getRandomItem = (items, fallback) => {
+  if (!Array.isArray(items) || items.length === 0) return fallback
+  return items[Math.floor(Math.random() * items.length)]
+}
+
+const getRandomInt = (min, max) => {
+  const lower = Math.ceil(min)
+  const upper = Math.floor(max)
+  return Math.floor(Math.random() * (upper - lower + 1)) + lower
+}
+
+const getRandomFloat = (min, max, precision = 2) => {
+  const value = min + Math.random() * (max - min)
+  return Number(value.toFixed(precision))
+}
+
+const getRandomColor = () => `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')}`
+
+const getRandomVector = (min, max, precision = 2) => ({
+  x: getRandomFloat(min, max, precision),
+  y: getRandomFloat(min, max, precision),
+  z: getRandomFloat(min, max, precision)
+})
+
+const randomBoolean = (chance = 0.5) => Math.random() < chance
+
+const degToRad = (deg) => (deg * Math.PI) / 180
+
+const getMotionDirectionForMode = (mode) => {
+  const option = MOTION_DIRECTION_OPTIONS.find(opt => opt.id === mode)
+  if (mode === 'custom') {
+    const vector = getRandomVector(-1, 1, 2)
+    const nearZero = Math.abs(vector.x) < 0.1 && Math.abs(vector.y) < 0.1 && Math.abs(vector.z) < 0.1
+    return nearZero ? { x: 0, y: 1, z: 0 } : vector
+  }
+  if (option?.vector) {
+    return { ...option.vector }
+  }
+  return { ...PARAM_FALLBACKS.motionDirection }
 }
 
 function App() {
@@ -100,28 +142,61 @@ function App() {
 
   const handleRandomize = () => {
     const effectTypes = Object.keys(EFFECT_PRESETS)
-    const shapeIds = PARTICLE_SHAPE_OPTIONS.map(shape => shape.id)
-    const selectedEffect = effectTypes[Math.floor(Math.random() * effectTypes.length)] || 'fireball'
-    const preset = getEffectPreset(selectedEffect) || defaultPreset
-
-    const randomShape = shapeIds[Math.floor(Math.random() * shapeIds.length)] || 'style'
-
-    const jitter = (value, minFactor, maxFactor) => {
-      const factor = minFactor + Math.random() * (maxFactor - minFactor)
-      return value * factor
+    const particleShapeIds = PARTICLE_SHAPE_OPTIONS.map(shape => shape.id)
+    const effectType = getRandomItem(effectTypes, 'fireball')
+    const preset = getEffectPreset(effectType) || defaultPreset
+    const particleShape = getRandomItem(particleShapeIds, 'style')
+    const emissionShape = getRandomItem(EMISSION_SHAPE_OPTIONS)?.id || 'sphere'
+    const motionDirectionMode = getRandomItem(MOTION_DIRECTION_OPTIONS)?.id || 'outwards'
+    const motionDirection = getMotionDirectionForMode(motionDirectionMode)
+    const useArcEmitter = randomBoolean()
+    const arcFlowMode = getRandomItem(ARC_FLOW_MODE_OPTIONS)?.id || 'continuous'
+    const arcStartDeg = getRandomInt(0, 170)
+    const arcEndDeg = getRandomInt(arcStartDeg + 1, 180)
+    const arcAngles = {
+      arcStartAngle: degToRad(arcStartDeg),
+      arcEndAngle: degToRad(arcEndDeg)
     }
+    const arcSettings = useArcEmitter
+      ? {
+          arcRadius: getRandomFloat(0.5, 4, 1),
+          arcThickness: getRandomFloat(0.05, 0.4, 2),
+          arcHeightOffset: 0,
+          arcFlowSpeed: getRandomFloat(0.1, 2.5, 2),
+          arcFlowMode,
+          ...arcAngles
+        }
+      : {
+          arcRadius: PARAM_FALLBACKS.arcRadius,
+          arcThickness: PARAM_FALLBACKS.arcThickness,
+          arcHeightOffset: PARAM_FALLBACKS.arcHeightOffset,
+          arcFlowSpeed: PARAM_FALLBACKS.arcFlowSpeed,
+          arcFlowMode: PARAM_FALLBACKS.arcFlowMode,
+          arcStartAngle: PARAM_FALLBACKS.arcStartAngle,
+          arcEndAngle: PARAM_FALLBACKS.arcEndAngle
+        }
 
     setVfxParams({
-      effectType: selectedEffect,
       ...PARAM_FALLBACKS,
       ...preset,
-      particleShape: randomShape,
-      particleCount: Math.max(8, Math.round(jitter(preset.particleCount, 0.75, 1.25))),
-      particleSize: Number(jitter(preset.particleSize, 0.85, 1.2).toFixed(2)),
-      particleSpeed: Number(jitter(preset.particleSpeed, 0.8, 1.25).toFixed(2)),
-      spread: Number(jitter(preset.spread, 0.8, 1.3).toFixed(2)),
-      glowIntensity: 1,
-      lifetime: Number(jitter(preset.lifetime, 0.85, 1.2).toFixed(2)),
+      effectType,
+      particleShape,
+      particleCount: getRandomInt(10, 200),
+      particleSize: getRandomFloat(0.05, 0.5, 2),
+      particleSpeed: getRandomFloat(0.1, 3, 1),
+      spread: getRandomFloat(0.5, 3, 1),
+      glowIntensity: getRandomFloat(0.5, 5, 1),
+      lifetime: getRandomFloat(0.5, 5, 1),
+      primaryColor: getRandomColor(),
+      secondaryColor: getRandomColor(),
+      emissionShape,
+      emissionSurfaceOnly: randomBoolean(),
+      emissionOffset: { ...PARAM_FALLBACKS.emissionOffset },
+      motionDirectionMode,
+      motionDirection,
+      motionAcceleration: getRandomVector(-0.5, 0.5, 2),
+      useArcEmitter,
+      ...arcSettings
     })
   }
 
@@ -130,6 +205,10 @@ function App() {
       <button className="export-button" onClick={handleExportGLTF}>
         <span>💾</span>
         Export GLTF
+      </button>
+      <button className="randomize-fab" onClick={handleRandomize}>
+        <span>🎲</span>
+        Randomize
       </button>
       <main className="app-main">
         <VFXViewer params={vfxParams} />

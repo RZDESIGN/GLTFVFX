@@ -1,5 +1,6 @@
 import './GeneratorPanel.css'
 import { EFFECT_PRESETS, PARTICLE_SHAPE_OPTIONS } from '../utils/effectBlueprint'
+import { ARC_FLOW_MODE_OPTIONS, EMISSION_SHAPE_OPTIONS, MOTION_DIRECTION_OPTIONS } from '../constants/uiOptions'
 
 const animationTypeLabels = {
   orbit: 'Orbit',
@@ -27,14 +28,6 @@ const effectTypes = [
     animationLabel: type.animationLabel || animationTypeLabels[animationType] || 'Custom'
   }
 })
-
-const emissionShapes = [
-  { id: 'sphere', name: 'Sphere' },
-  { id: 'cone', name: 'Cone' },
-  { id: 'ring', name: 'Ring' },
-  { id: 'disc', name: 'Disc' },
-  { id: 'box', name: 'Box' },
-]
 
 const particleShapes = PARTICLE_SHAPE_OPTIONS
 
@@ -287,7 +280,7 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
           Emission Shape
         </h3>
         <div className="button-group">
-          {emissionShapes.map(shape => (
+          {EMISSION_SHAPE_OPTIONS.map(shape => (
             <button
               key={shape.id}
               className={`button-option ${params.emissionShape === shape.id ? 'active' : ''}`}
@@ -354,9 +347,11 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
             onChange={(e) => onParamChange('motionDirectionMode', e.target.value)}
             className="control-input"
           >
-            <option value="outwards">Outwards</option>
-            <option value="inwards">Inwards</option>
-            <option value="custom">Custom</option>
+            {MOTION_DIRECTION_OPTIONS.map(option => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
         {directionMode === 'custom' && (
@@ -515,8 +510,11 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
                 onChange={(e) => onParamChange('arcFlowMode', e.target.value)}
                 className="control-input"
               >
-                <option value="continuous">Continuous</option>
-                <option value="burst">Burst Loop</option>
+                {ARC_FLOW_MODE_OPTIONS.map(mode => (
+                  <option key={mode.id} value={mode.id}>
+                    {mode.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="control-group">
