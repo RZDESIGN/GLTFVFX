@@ -276,7 +276,15 @@ const VFXViewer = ({ params }) => {
       const worldWidthAtDepth = 2 * Math.tan(fov / 2) * distance * (cssWidth / cssHeight)
       const worldUnitsPerPx = worldWidthAtDepth / cssWidth
       const desiredPxOffset = overlayWidth * 0.5 + 12 // half overlay + padding
-      previewGroupRef.current.position.x = -desiredPxOffset * worldUnitsPerPx
+      let sign = -1
+      if (settings) {
+        const rect = settings.getBoundingClientRect()
+        // If panel is nearer to the left side, shift scene to the right
+        const distanceToLeft = rect.left
+        const distanceToRight = (window.innerWidth - rect.right)
+        if (distanceToLeft <= distanceToRight) sign = 1
+      }
+      previewGroupRef.current.position.x = sign * desiredPxOffset * worldUnitsPerPx
     }
 
     const handleResize = () => {
@@ -501,16 +509,6 @@ const VFXViewer = ({ params }) => {
   return (
     <div className="vfx-viewer">
       <canvas ref={canvasRef} className="vfx-canvas" />
-      <div className="vfx-info">
-        <div className="vfx-info-item">
-          <span>🎨</span>
-          <span>{params.effectType.toUpperCase()}</span>
-        </div>
-        <div className="vfx-info-item">
-          <span>✨</span>
-          <span>{particleCount} particles</span>
-        </div>
-      </div>
     </div>
   )
 }

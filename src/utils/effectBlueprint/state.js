@@ -94,6 +94,96 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
 
   y += style.heightBias ?? 0
 
+  const beamStrands = Math.max(0, Math.floor(style.beamStrandCount || 0))
+  const clusterCount = Math.max(0, Math.floor(style.clusterCount || 0))
+  let clusterAnchor = null
+  let clusterIndex = null
+  let motionDelay = 0
+
+  if (beamStrands > 0) {
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5))
+    const seqA = wrap01((index + 0.5) * 0.7548776662466927)
+    const seqB = wrap01((index + 0.5) * 0.5698402909980532)
+    const seqC = wrap01((index + 0.5) * 0.4386924697151326)
+    const radiusBase = Math.max(0.01, style.beamRadius ?? spread * 0.2)
+    const radiusPower = Math.max(0.25, style.beamRadiusFalloff ?? 1)
+    const radiusSample = Math.pow(seqA, 0.5 * radiusPower)
+    const sampleRadius = Math.max(0.002, radiusBase * radiusSample)
+    const angleOffset =
+      seqB * Math.PI * 2 +
+      (style.beamTwist ?? 0) * index * goldenAngle
+    x = Math.cos(angleOffset) * sampleRadius
+    z = Math.sin(angleOffset) * sampleRadius
+
+    const beamHeight = Math.max(0.01, style.beamHeight ?? spread * 4)
+    const beamHeightJitter = style.beamHeightJitter ?? 0
+    const heightSample = seqC
+    y =
+      (style.beamBaseHeight ?? 0) +
+      heightSample * beamHeight +
+      (random(30) - 0.5) * beamHeightJitter
+
+    const verticalJitter = style.beamVerticalJitter ?? 0
+    if (verticalJitter !== 0) {
+      y += (random(31) - 0.5) * verticalJitter
+    }
+
+    const beamDelayRange = clamp(style.beamDelayRange ?? 0, 0, 0.98)
+    if (beamDelayRange > 0) {
+      const delayJitter =
+        (random(32) - 0.5) * (style.beamDelayJitter ?? beamDelayRange * 0.25)
+      const strandProgress = beamStrands > 1 ? (index % beamStrands) / beamStrands : 0
+      const delayMix = clamp(0.25 * strandProgress + 0.75 * heightSample, 0, 1)
+      motionDelay = clamp(delayMix * beamDelayRange + delayJitter, 0, 0.98)
+    }
+  } else if (clusterCount > 0) {
+    clusterIndex = Math.min(
+      clusterCount - 1,
+      Math.floor(Math.abs(random(27)) * clusterCount)
+    )
+    const clusterSeed = createRandomGenerator(
+      `${params.effectType}_cluster`,
+      clusterIndex
+    )
+    const anchorRadius = Math.max(
+      0.05,
+      (style.clusterRadius ?? spread * 0.5) *
+        (0.65 + clusterSeed(1) * 0.6)
+    )
+    const anchorAngle = clusterSeed(2) * Math.PI * 2
+    const anchorHeight =
+      (style.clusterBaseHeight ?? 0) +
+      (clusterSeed(3) - 0.5) * (style.clusterHeightRange ?? spread * 0.6)
+
+    clusterAnchor = {
+      x: Math.cos(anchorAngle) * anchorRadius,
+      y: anchorHeight,
+      z: Math.sin(anchorAngle) * anchorRadius
+    }
+
+    const scatter = style.clusterScatter ?? 0.45
+    const verticalScatter = style.clusterVerticalScatter ?? 0.85
+    x = clusterAnchor.x + (random(28) - 0.5) * scatter
+    z = clusterAnchor.z + (random(29) - 0.5) * scatter
+    y = clusterAnchor.y + (random(30) - 0.5) * scatter * verticalScatter
+
+    if (style.clusterDelayRange) {
+      motionDelay = clamp(
+        clusterSeed(4) * style.clusterDelayRange,
+        0,
+        0.95
+      )
+    }
+
+    if (style.clusterRiseJitter) {
+      motionDelay = clamp(
+        motionDelay + (random(31) - 0.5) * style.clusterRiseJitter,
+        0,
+        0.98
+      )
+    }
+  }
+
   const emitterOffset = toVector3(params.emissionOffset)
   const relativePosition = { x, y, z }
 
@@ -317,6 +407,9 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
     acceleration,
     velocityMagnitude,
     layerT: emissionLayer ?? random(20),
-    emitterHeight: emissionHeight ?? null
+    emitterHeight: emissionHeight ?? null,
+    clusterAnchor,
+    clusterIndex,
+    motionDelay
   }
 }

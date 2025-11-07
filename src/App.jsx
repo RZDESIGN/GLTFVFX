@@ -127,10 +127,6 @@ function App() {
 
   return (
     <div className="app">
-      <div className="brand-badge">
-        <span>✨</span>
-        GLTF VFX Generator
-      </div>
       <button className="export-button" onClick={handleExportGLTF}>
         <span>💾</span>
         Export GLTF
@@ -138,11 +134,19 @@ function App() {
       <main className="app-main">
         <VFXViewer params={vfxParams} />
         <aside className="settings-card">
+          <div className="settings-card-header">
+            <span>✨</span>
+            <span className="settings-card-title">GLTF VFX Generator</span>
+          </div>
           <GeneratorPanel 
             params={vfxParams} 
             onParamChange={handleParamChange}
             onRandomize={handleRandomize}
           />
+          <div className="settings-card-footer">
+            <span>made by Hammy / Ricardo — Optimized for HYTOPIA</span>
+            <a href="https://hytopia.com/" target="_blank" rel="noopener noreferrer">hytopia.com</a>
+          </div>
         </aside>
       </main>
     </div>

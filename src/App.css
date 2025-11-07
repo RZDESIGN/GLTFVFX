@@ -32,7 +32,7 @@
 
 .export-button {
   position: fixed;
-  top: 16px;
+  bottom: 16px;
   right: 16px;
   z-index: 60;
   padding: 0.6rem 1rem;
@@ -76,10 +76,12 @@
 }
 
 /* Floating settings panel on the right */
+/* Floating settings panel on the left */
 .settings-card {
   position: fixed;
-  top: 72px;
-  right: 16px;
+  top: 16px;
+  left: 16px;
+  right: auto;
   bottom: 16px;
   z-index: 50;
   width: min(420px, 92vw);
@@ -90,6 +92,45 @@
   border-radius: 16px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
   backdrop-filter: saturate(120%) blur(10px);
+}
+
+/* Settings panel header with brand */
+.settings-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+}
+
+.settings-card-title {
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.2px;
+}
+
+/* Footer attribution inside the settings panel */
+.settings-card-footer {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.8rem;
+  color: rgba(229, 231, 235, 0.75);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.settings-card-footer a {
+  color: #fbbf24;
+  text-decoration: none;
+}
+
+.settings-card-footer a:hover {
+  text-decoration: underline;
 }
 
 .app-main {
@@ -138,5 +179,6 @@
   .export-button {
     top: 8px;
     right: 8px;
+    bottom: auto;
   }
 }

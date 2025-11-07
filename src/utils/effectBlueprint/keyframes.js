@@ -1,4 +1,4 @@
-import { wrap01 } from './math'
+import { clamp, wrap01 } from './math'
 import { sampleGradient } from './colors'
 import { toVector3 } from './vectors'
 import { eulerToQuaternion, normalizeQuaternion } from './orientation'
@@ -55,10 +55,17 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
 
   const duration = params.lifetime > 0 ? params.lifetime : 1
 
+  const applyMotionDelay = (progress, delay) => {
+    if (!delay) return progress
+    const normalizedDelay = clamp(delay, 0, 0.95)
+    const availableWindow = Math.max(0.0001, 1 - normalizedDelay)
+    return clamp((progress - normalizedDelay) / availableWindow, 0, 1)
+  }
+
   for (let i = 0; i < times.length; i++) {
     const time = times[i]
+    const progress = duration === 0 ? 0 : Math.min(1, time / duration)
     const elapsed = time
-    const progress = duration === 0 ? 0 : Math.min(1, elapsed / duration)
     let x = state.initialPosition.x
     let y = state.initialPosition.y
     let z = state.initialPosition.z
@@ -66,6 +73,8 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
     let scaleX = state.scale.x
     let scaleY = state.scale.y
     let scaleZ = state.scale.z
+
+    let allowVelocityBlend = true
 
     if (isRainbowArc) {
       const flowMode = arcFlowMode
@@ -151,27 +160,61 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
     } else {
       switch (params.animationType) {
         case 'rise': {
-          const riseProgress = progress * riseHeight * riseSpeed
+          const activeWindow = 0.72
+          const fadeWindow = Math.max(0.05, 1 - activeWindow)
+          const delayedProgress = applyMotionDelay(progress, state.motionDelay)
+          const risePhase = Math.min(delayedProgress / activeWindow, 1)
+          const riseProgress = risePhase * riseHeight * riseSpeed
           y = state.initialPosition.y + riseProgress
 
           if (driftStrength > 0) {
             const drift = driftStrength
-            const driftAngle = progress * Math.PI * 2 + state.driftPhase
+            const driftAngle = risePhase * Math.PI * 2 + state.driftPhase
             x += Math.sin(driftAngle) * drift
             z += Math.cos(driftAngle * 0.8) * drift
+          }
+
+          const riseScaleStart = style.riseScaleStart ?? 1
+          const riseScaleEnd = style.riseScaleEnd ?? 1
+          const scaleGrowth =
+            riseScaleStart + (riseScaleEnd - riseScaleStart) * risePhase
+          scaleX = state.scale.x * scaleGrowth
+          scaleY = state.scale.y * scaleGrowth
+          scaleZ = state.scale.z * scaleGrowth
+
+          if (delayedProgress > activeWindow) {
+            const fadeT = clamp((delayedProgress - activeWindow) / fadeWindow, 0, 1)
+            const vanish = Math.pow(Math.max(0, 1 - fadeT), 1.4)
+            scaleX = state.scale.x * scaleGrowth * vanish
+            scaleY = state.scale.y * scaleGrowth * vanish
+            scaleZ = state.scale.z * scaleGrowth * vanish
+            allowVelocityBlend = false
           }
           break
         }
         case 'explode': {
-          const normalized = progress
-          const expansion = 1 + normalized * explosionSpread
+          const burstProgress = applyMotionDelay(progress, state.motionDelay)
+          const activeWindow = 0.68
+          const fadeWindow = Math.max(0.05, 1 - activeWindow)
+          const expansionProgress = Math.min(burstProgress / activeWindow, 1)
+          const expansion = 1 + expansionProgress * explosionSpread
           x = state.initialPosition.x * expansion
           y = state.initialPosition.y * expansion
           z = state.initialPosition.z * expansion
-          const shrink = Math.max(0.12, 1 - normalized * explosionShrink)
+
+          const shrink = Math.max(0.12, 1 - expansionProgress * explosionShrink)
           scaleX = state.scale.x * shrink
           scaleY = state.scale.y * shrink
           scaleZ = state.scale.z * shrink
+
+          if (burstProgress > activeWindow) {
+            const fadeT = clamp((burstProgress - activeWindow) / fadeWindow, 0, 1)
+            const vanish = Math.pow(Math.max(0, 1 - fadeT), 1.6)
+            scaleX *= vanish
+            scaleY *= vanish
+            scaleZ *= vanish
+            allowVelocityBlend = false
+          }
           break
         }
         case 'spiral': {
@@ -258,6 +301,7 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
     }
 
     if (
+      allowVelocityBlend &&
       !isRainbowArc &&
       (velocityVec.x !== 0 || velocityVec.y !== 0 || velocityVec.z !== 0 || accelerationVec.x !== 0 || accelerationVec.y !== 0 || accelerationVec.z !== 0)
     ) {
@@ -316,4 +360,3 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
 
   return keyframeData
 }
-

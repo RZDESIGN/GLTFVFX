@@ -18,13 +18,13 @@ const effectTypes = [
   { id: 'sparkles', name: 'Sparkles', icon: '⭐' },
   { id: 'smoke', name: 'Smoke', icon: '💨' },
   { id: 'energy-beam', name: 'Energy Beam', icon: '⚡' },
-  { id: 'rainbow', name: 'Rainbow', icon: '🌈' },
+  { id: 'rainbow', name: 'Rainbow', icon: '🌈', animationLabel: 'Rainbow Arc' },
 ].map(type => {
   const animationType = EFFECT_PRESETS[type.id]?.animationType || null
   return {
     ...type,
     animationType,
-    animationLabel: animationTypeLabels[animationType] || 'Custom'
+    animationLabel: type.animationLabel || animationTypeLabels[animationType] || 'Custom'
   }
 })
 
