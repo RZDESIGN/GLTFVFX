@@ -1,5 +1,13 @@
 import './GeneratorPanel.css'
-import { PARTICLE_SHAPE_OPTIONS } from '../utils/effectBlueprint'
+import { EFFECT_PRESETS, PARTICLE_SHAPE_OPTIONS } from '../utils/effectBlueprint'
+
+const animationTypeLabels = {
+  orbit: 'Orbit',
+  rise: 'Rise',
+  explode: 'Explode',
+  spiral: 'Spiral',
+  pulse: 'Pulse'
+}
 
 const effectTypes = [
   { id: 'aura', name: 'Aura', icon: '✨' },
@@ -11,7 +19,14 @@ const effectTypes = [
   { id: 'smoke', name: 'Smoke', icon: '💨' },
   { id: 'energy-beam', name: 'Energy Beam', icon: '⚡' },
   { id: 'rainbow', name: 'Rainbow', icon: '🌈' },
-]
+].map(type => {
+  const animationType = EFFECT_PRESETS[type.id]?.animationType || null
+  return {
+    ...type,
+    animationType,
+    animationLabel: animationTypeLabels[animationType] || 'Custom'
+  }
+})
 
 const emissionShapes = [
   { id: 'sphere', name: 'Sphere' },
@@ -19,14 +34,6 @@ const emissionShapes = [
   { id: 'ring', name: 'Ring' },
   { id: 'disc', name: 'Disc' },
   { id: 'box', name: 'Box' },
-]
-
-const animationTypes = [
-  { id: 'orbit', name: 'Orbit' },
-  { id: 'rise', name: 'Rise' },
-  { id: 'explode', name: 'Explode' },
-  { id: 'spiral', name: 'Spiral' },
-  { id: 'pulse', name: 'Pulse' },
 ]
 
 const particleShapes = PARTICLE_SHAPE_OPTIONS
@@ -92,7 +99,12 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
               onClick={() => onParamChange('effectType', type.id)}
             >
               <span className="effect-icon">{type.icon}</span>
-              <span>{type.name}</span>
+              <div className="effect-type-text">
+                <span className="effect-name">{type.name}</span>
+                <span className="effect-animation-label">
+                  {type.animationLabel} style
+                </span>
+              </div>
             </button>
           ))}
         </div>
@@ -522,25 +534,6 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
             </div>
           </>
         )}
-      </div>
-
-      {/* Animation Type */}
-      <div className="panel-section">
-        <h3 className="section-title">
-          <span>🎬</span>
-          Animation
-        </h3>
-        <div className="button-group">
-          {animationTypes.map(anim => (
-            <button
-              key={anim.id}
-              className={`button-option ${params.animationType === anim.id ? 'active' : ''}`}
-              onClick={() => onParamChange('animationType', anim.id)}
-            >
-              {anim.name}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Randomize Button */}
