@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import './VFXViewer.css'
 import { buildParticleSystemBlueprint } from '../utils/effectBlueprint'
-import { generateBlockyTexture, createTextureFromDataURL, disposeTexture } from '../utils/textureGenerator'
+import { generateBlockyTexture, createTextureFromDataURL, disposeTexture, generateBlockyCanvas } from '../utils/textureGenerator'
 
 const geometryCache = new Map()
 
@@ -60,22 +60,50 @@ const getGeometryFromConfig = (config = {}) => {
   return geometryCache.get(key)
 }
 
-const createMaterialForParticle = (style, state, mapTexture) => {
-  const color = new THREE.Color(state.color)
+const createMaterialForParticle = (style, state, mapTexture, globalOpacity = 1, textureBlend = 1) => {
+  // textureBlend is interpreted as "color share": 1 = pure color, 0 = pure texture
+  const colorShare = Math.max(0, Math.min(1, textureBlend))
+  const textureShare = 1 - colorShare
+  const base = new THREE.Color(state.color)
+  const color = base.clone()
+  const useTexture = !!mapTexture && textureShare > 0.001
+  const fullTexture = useTexture && textureShare >= 0.999
+
+  if (useTexture) {
+    if (fullTexture) {
+      // Pure texture -> remove tint
+      color.setRGB(1, 1, 1)
+    } else {
+      // As texture influence grows, move diffuse color toward white
+      color.r = color.r + (1 - color.r) * textureShare
+      color.g = color.g + (1 - color.g) * textureShare
+      color.b = color.b + (1 - color.b) * textureShare
+    }
+  }
+
+  const emissiveColor = (() => {
+    if (!useTexture) return base.clone()
+    if (fullTexture) return new THREE.Color(0, 0, 0)
+    const e = base.clone()
+    e.r *= colorShare
+    e.g *= colorShare
+    e.b *= colorShare
+    return e
+  })()
 
   const material = new THREE.MeshStandardMaterial({
     color,
-    emissive: color.clone(),
+    emissive: emissiveColor,
     emissiveIntensity: state.emissiveIntensity,
     metalness: style.metalness ?? 0.2,
     roughness: style.roughness ?? 0.5,
     transparent: style.alphaMode === 'BLEND',
-    opacity: state.opacity,
+    opacity: Math.max(0, Math.min(1, (state.opacity ?? 1) * (Number.isFinite(globalOpacity) ? globalOpacity : 1))),
     depthWrite: style.depthWrite ?? true
   })
 
   material.side = THREE.DoubleSide
-  if (mapTexture) {
+  if (useTexture) {
     material.map = mapTexture
     material.needsUpdate = true
   }
@@ -199,6 +227,7 @@ const VFXViewer = ({ params }) => {
   const blueprintRef = useRef(null)
   const effectStartTimeRef = useRef(0)
   const [particleCount, setParticleCount] = useState(0)
+  const [texturePreviewUrl, setTexturePreviewUrl] = useState(null)
 
   const isDragging = useRef(false)
   const lastPointer = useRef({ x: 0, y: 0 })
@@ -397,9 +426,24 @@ const VFXViewer = ({ params }) => {
           sampleVector3(times, keyframes.scales, playbackTime, particle.scale)
 
           if (keyframes.colors && particle.material) {
+            const hasTexture = !!(particleSystem.userData && particleSystem.userData.texture)
+            const colorShareNow = params.textureMode === 'none' ? 1 : (Number.isFinite(params.textureBlend) ? params.textureBlend : 1)
+            const textureShareNow = 1 - colorShareNow
             sampleVector3(times, keyframes.colors, playbackTime, tempColorVec)
-            particle.material.color.setRGB(tempColorVec.x, tempColorVec.y, tempColorVec.z)
-            particle.material.emissive.setRGB(tempColorVec.x, tempColorVec.y, tempColorVec.z)
+            if (hasTexture && textureShareNow >= 0.999) {
+              // Pure texture: no tint
+              particle.material.color.setRGB(1, 1, 1)
+              particle.material.emissive.setRGB(0, 0, 0)
+            } else if (hasTexture && textureShareNow > 0.001) {
+              const r = tempColorVec.x + (1 - tempColorVec.x) * textureShareNow
+              const g = tempColorVec.y + (1 - tempColorVec.y) * textureShareNow
+              const b = tempColorVec.z + (1 - tempColorVec.z) * textureShareNow
+              particle.material.color.setRGB(r, g, b)
+              particle.material.emissive.setRGB(r * colorShareNow, g * colorShareNow, b * colorShareNow)
+            } else {
+              particle.material.color.setRGB(tempColorVec.x, tempColorVec.y, tempColorVec.z)
+              particle.material.emissive.setRGB(tempColorVec.x, tempColorVec.y, tempColorVec.z)
+            }
           }
 
           if (particle.userData.emissiveIntensity !== undefined && particle.material) {
@@ -476,17 +520,26 @@ const VFXViewer = ({ params }) => {
 
     let activeTexture = null
     let disposed = false
+    const colorShare = params.textureMode === 'none' ? 1 : (Number.isFinite(params.textureBlend) ? params.textureBlend : 1)
+    const textureShare = 1 - colorShare
+    const useTexture = params.textureMode !== 'none' && textureShare > 0.001
 
-    if (params.textureMode === 'auto') {
+    if (params.textureMode === 'auto' && useTexture) {
       activeTexture = generateBlockyTexture(
         params.primaryColor,
         params.secondaryColor,
         params.textureResolution || 16
       )
+      try {
+        const c = generateBlockyCanvas(params.primaryColor, params.secondaryColor, params.textureResolution || 16)
+        setTexturePreviewUrl(c.toDataURL('image/png'))
+      } catch {
+        setTexturePreviewUrl(null)
+      }
     }
 
     particles.forEach(state => {
-      const material = createMaterialForParticle(style, state, activeTexture)
+      const material = createMaterialForParticle(style, state, activeTexture, Number.isFinite(params.opacity) ? params.opacity : 1, colorShare)
       const particle = new THREE.Mesh(geometry, material)
       particle.name = `Particle_${state.index}`
 
@@ -512,11 +565,12 @@ const VFXViewer = ({ params }) => {
     setParticleCount(particles.length)
 
     // If custom texture is selected, load and apply asynchronously
-    if (params.textureMode === 'custom' && params.customTexture) {
+    if (params.textureMode === 'custom' && params.customTexture && useTexture) {
       ;(async () => {
         try {
           const tex = await createTextureFromDataURL(params.customTexture)
           if (!tex) return
+          setTexturePreviewUrl(params.customTexture || null)
           if (disposed || !particleSystemRef.current) {
             disposeTexture(tex)
             return
@@ -524,6 +578,22 @@ const VFXViewer = ({ params }) => {
           particleSystemRef.current.children.forEach(child => {
             if (child.material) {
               child.material.map = tex
+              if (textureShare >= 0.999) {
+                // Pure texture
+                child.material.color.setRGB(1, 1, 1)
+                child.material.emissive.setRGB(0, 0, 0)
+              } else if (textureShare > 0.001) {
+                const c = new THREE.Color(child.material.color)
+                c.r = c.r + (1 - c.r) * textureShare
+                c.g = c.g + (1 - c.g) * textureShare
+                c.b = c.b + (1 - c.b) * textureShare
+                child.material.color.copy(c)
+                const e = new THREE.Color()
+                e.r = c.r * colorShare
+                e.g = c.g * colorShare
+                e.b = c.b * colorShare
+                child.material.emissive.copy(e)
+              }
               child.material.needsUpdate = true
             }
           })
@@ -536,6 +606,9 @@ const VFXViewer = ({ params }) => {
     } else if (activeTexture) {
       // Store on group for cleanup
       particleSystem.userData.texture = activeTexture
+    }
+    if (params.textureMode === 'none' || !useTexture) {
+      setTexturePreviewUrl(null)
     }
 
     return () => {
@@ -557,6 +630,54 @@ const VFXViewer = ({ params }) => {
   return (
     <div className="vfx-viewer">
       <canvas ref={canvasRef} className="vfx-canvas" />
+      {texturePreviewUrl && (
+        <div className="texture-preview-overlay">
+          <img src={texturePreviewUrl} alt="Texture" />
+          <button
+            className="texture-download"
+            onClick={async (e) => {
+              e.stopPropagation()
+              try {
+                if (params.textureMode === 'auto') {
+                  const c = generateBlockyCanvas(params.primaryColor, params.secondaryColor, params.textureResolution || 16)
+                  const url = c.toDataURL('image/png')
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = 'vfx-texture.png'
+                  document.body.appendChild(a)
+                  a.click()
+                  document.body.removeChild(a)
+                } else if (params.textureMode === 'custom' && params.customTexture) {
+                  const img = new Image()
+                  img.crossOrigin = 'anonymous'
+                  const loaded = new Promise((resolve, reject) => {
+                    img.onload = resolve
+                    img.onerror = reject
+                  })
+                  img.src = params.customTexture
+                  await loaded
+                  const c = document.createElement('canvas')
+                  c.width = img.width
+                  c.height = img.height
+                  const ctx = c.getContext('2d')
+                  ctx.imageSmoothingEnabled = false
+                  ctx.drawImage(img, 0, 0)
+                  const url = c.toDataURL('image/png')
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = 'vfx-texture.png'
+                  document.body.appendChild(a)
+                  a.click()
+                  document.body.removeChild(a)
+                }
+              } catch {}
+            }}
+            title="Export Texture PNG"
+          >
+            PNG
+          </button>
+        </div>
+      )}
     </div>
   )
 }

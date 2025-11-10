@@ -40,29 +40,55 @@ const createGeometryFromConfig = (config = {}) => {
   }
 }
 
-const createMaterialForParticle = (style, state, mapTexture) => {
-  const color = new THREE.Color(state.color)
+const createMaterialForParticle = (style, state, mapTexture, globalOpacity = 1, textureBlend = 1) => {
+  // textureBlend is interpreted as "color share": 1 = pure color, 0 = pure texture
+  const colorShare = Math.max(0, Math.min(1, textureBlend))
+  const textureShare = 1 - colorShare
+  const base = new THREE.Color(state.color)
+  const color = base.clone()
+  const useTexture = !!mapTexture && textureShare > 0.001
+  const fullTexture = useTexture && textureShare >= 0.999
+
+  if (useTexture) {
+    if (fullTexture) {
+      color.setRGB(1, 1, 1)
+    } else {
+      color.r = color.r + (1 - color.r) * textureShare
+      color.g = color.g + (1 - color.g) * textureShare
+      color.b = color.b + (1 - color.b) * textureShare
+    }
+  }
+
+  const emissiveColor = (() => {
+    if (!useTexture) return base.clone()
+    if (fullTexture) return new THREE.Color(0, 0, 0)
+    const e = base.clone()
+    e.r *= colorShare
+    e.g *= colorShare
+    e.b *= colorShare
+    return e
+  })()
 
   const material = new THREE.MeshStandardMaterial({
     color,
-    emissive: color.clone(),
+    emissive: emissiveColor,
     emissiveIntensity: state.emissiveIntensity,
     metalness: style.metalness ?? 0.2,
     roughness: style.roughness ?? 0.5,
     transparent: style.alphaMode === 'BLEND',
-    opacity: state.opacity,
+    opacity: Math.max(0, Math.min(1, (state.opacity ?? 1) * (Number.isFinite(globalOpacity) ? globalOpacity : 1))),
     depthWrite: style.depthWrite ?? true
   })
 
   material.side = THREE.DoubleSide
-  if (mapTexture) {
+  if (useTexture) {
     material.map = mapTexture
     material.needsUpdate = true
   }
   return material
 }
 
-const buildExportScene = (params, mapTexture) => {
+const buildExportScene = (params, mapTexture, textureBlend = 1) => {
   const blueprint = buildParticleSystemBlueprint(params)
   const { style, particles, keyframeTimes } = blueprint
 
@@ -78,7 +104,7 @@ const buildExportScene = (params, mapTexture) => {
   const times = Array.from(keyframeTimes)
 
   particles.forEach(state => {
-    const material = createMaterialForParticle(style, state, mapTexture)
+    const material = createMaterialForParticle(style, state, mapTexture, Number.isFinite(params.opacity) ? params.opacity : 1, textureBlend)
     materials.push(material)
 
     const mesh = new THREE.Mesh(geometry, material)
@@ -95,9 +121,28 @@ const buildExportScene = (params, mapTexture) => {
     const positions = Array.from(state.keyframes.positions)
     const rotations = Array.from(state.keyframes.rotations)
     const scales = Array.from(state.keyframes.scales)
-    const colors = state.keyframes.colors
+    let colors = state.keyframes.colors
       ? Array.from(state.keyframes.colors)
       : null
+    // textureBlend: color share (1 = pure color, 0 = pure texture)
+    const colorShare = Math.max(0, Math.min(1, textureBlend))
+    const textureShare = 1 - colorShare
+    const useTexture = !!mapTexture && textureShare > 0.001
+    const fullTexture = useTexture && textureShare >= 0.999
+    if (colors && useTexture) {
+      if (fullTexture) {
+        colors = null
+      } else {
+        for (let i = 0; i < colors.length; i += 3) {
+          const r = colors[i]
+          const g = colors[i + 1]
+          const b = colors[i + 2]
+          colors[i] = r + (1 - r) * textureShare
+          colors[i + 1] = g + (1 - g) * textureShare
+          colors[i + 2] = b + (1 - b) * textureShare
+        }
+      }
+    }
 
     tracks.push(
       new THREE.VectorKeyframeTrack(
@@ -161,21 +206,23 @@ const buildExportScene = (params, mapTexture) => {
 
 export const generateVFXGLTF = async (params) => {
   let mapTexture = null
+  const colorShare = params.textureMode === 'none' ? 1 : (Number.isFinite(params.textureBlend) ? params.textureBlend : 1)
+  const textureShare = 1 - colorShare
   try {
-    if (params.textureMode === 'auto') {
+    if (params.textureMode === 'auto' && textureShare > 0.001) {
       mapTexture = generateBlockyTexture(
         params.primaryColor,
         params.secondaryColor,
         params.textureResolution || 16
       )
-    } else if (params.textureMode === 'custom' && params.customTexture) {
+    } else if (params.textureMode === 'custom' && params.customTexture && textureShare > 0.001) {
       mapTexture = await createTextureFromDataURL(params.customTexture)
     }
   } catch (_) {
     mapTexture = null
   }
 
-  const { scene, geometry, materials, clip, style } = buildExportScene(params, mapTexture)
+  const { scene, geometry, materials, clip, style } = buildExportScene(params, mapTexture, colorShare)
   const exporter = new GLTFExporter()
 
   try {

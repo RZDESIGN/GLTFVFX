@@ -54,7 +54,8 @@ const initialParams = {
   ...defaultPreset,
   textureMode: 'auto',
   textureResolution: 16,
-  customTexture: null
+  customTexture: null,
+  textureBlend: 1
 }
 
 const getRandomItem = (items, fallback) => {

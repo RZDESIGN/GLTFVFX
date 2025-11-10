@@ -1,6 +1,7 @@
 import './GeneratorPanel.css'
 import { EFFECT_PRESETS, PARTICLE_SHAPE_OPTIONS } from '../utils/effectBlueprint'
 import { ARC_FLOW_MODE_OPTIONS, EMISSION_SHAPE_OPTIONS, MOTION_DIRECTION_OPTIONS, TEXTURE_MODE_OPTIONS } from '../constants/uiOptions'
+import { generateBlockyCanvas } from '../utils/textureGenerator'
 
 const animationTypeLabels = {
   orbit: 'Orbit',
@@ -101,92 +102,6 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
             </button>
           ))}
         </div>
-      </div>
-
-      {/* Texture */}
-      <div className="panel-section">
-        <h3 className="section-title">
-          <span>🧩</span>
-          Texture
-        </h3>
-        <div className="control-group">
-          <label className="control-label">
-            <span>Mode</span>
-          </label>
-          <select
-            value={params.textureMode || 'auto'}
-            onChange={(e) => onParamChange('textureMode', e.target.value)}
-            className="control-input"
-          >
-            {TEXTURE_MODE_OPTIONS.map(option => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {params.textureMode === 'auto' && (
-          <div className="control-group">
-            <label className="control-label">
-              <span>Resolution</span>
-              <span className="control-value">{(params.textureResolution || 16)}×{(params.textureResolution || 16)}</span>
-            </label>
-            <input
-              type="range"
-              min="8"
-              max="64"
-              step="1"
-              value={params.textureResolution || 16}
-              onChange={(e) => onParamChange('textureResolution', parseInt(e.target.value))}
-              className="range-input"
-            />
-          </div>
-        )}
-
-        {params.textureMode === 'custom' && (
-          <>
-            <div className="control-group">
-              <label className="control-label">
-                <span>Upload Texture</span>
-              </label>
-              <input
-                type="file"
-                accept="image/png, image/jpeg, image/webp"
-                onChange={(e) => {
-                  const file = e.target.files && e.target.files[0]
-                  if (!file) return
-                  const reader = new FileReader()
-                  reader.onload = () => {
-                    onParamChange('customTexture', reader.result)
-                  }
-                  reader.readAsDataURL(file)
-                }}
-                className="control-input"
-              />
-            </div>
-            {params.customTexture && (
-              <div className="control-group">
-                <label className="control-label">
-                  <span>Preview</span>
-                </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <img
-                    src={params.customTexture}
-                    alt="Texture preview"
-                    style={{ width: 48, height: 48, imageRendering: 'pixelated', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)' }}
-                  />
-                  <button
-                    className="button-option"
-                    onClick={() => onParamChange('customTexture', null)}
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
       </div>
 
       {/* Particle Settings */}
@@ -354,6 +269,183 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
             />
           </div>
         </div>
+      </div>
+
+      {/* Texture */}
+      <div className="panel-section">
+        <h3 className="section-title">
+          <span>🧩</span>
+          Texture
+        </h3>
+        <div className="control-group">
+          <label className="control-label">
+            <span>Mode</span>
+          </label>
+          <select
+            value={params.textureMode || 'auto'}
+            onChange={(e) => onParamChange('textureMode', e.target.value)}
+            className="control-input"
+          >
+            {TEXTURE_MODE_OPTIONS.map(option => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {params.textureMode === 'auto' && (
+          <div className="control-group">
+            <label className="control-label">
+              <span>Resolution</span>
+              <span className="control-value">{(params.textureResolution || 16)}×{(params.textureResolution || 16)}</span>
+            </label>
+            <input
+              type="range"
+              min="8"
+              max="64"
+              step="1"
+              value={params.textureResolution || 16}
+              onChange={(e) => onParamChange('textureResolution', parseInt(e.target.value))}
+              className="range-input"
+            />
+          </div>
+        )}
+
+        {params.textureMode !== 'none' && (
+          <div className="control-group">
+            <label className="control-label">
+              <span>Texture Blend</span>
+              <span className="control-value">{(Number.isFinite(params.textureBlend) ? params.textureBlend : 1).toFixed(2)}</span>
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={Number.isFinite(params.textureBlend) ? params.textureBlend : 1}
+              onChange={(e) => onParamChange('textureBlend', parseFloat(e.target.value))}
+              className="range-input"
+            />
+          </div>
+        )}
+
+        {/* Preview + Export */}
+        {params.textureMode === 'auto' && (
+          <div className="control-group">
+            <label className="control-label">
+              <span>Preview</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {(() => {
+                try {
+                  const c = generateBlockyCanvas(params.primaryColor, params.secondaryColor, params.textureResolution || 16)
+                  const url = c.toDataURL('image/png')
+                  return (
+                    <img
+                      src={url}
+                      alt="Texture preview"
+                      style={{ width: 48, height: 48, imageRendering: 'pixelated', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)' }}
+                    />
+                  )
+                } catch {
+                  return null
+                }
+              })()}
+              <button
+                className="button-option"
+                onClick={() => {
+                  try {
+                    const c = generateBlockyCanvas(params.primaryColor, params.secondaryColor, params.textureResolution || 16)
+                    const url = c.toDataURL('image/png')
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = 'vfx-texture.png'
+                    document.body.appendChild(a)
+                    a.click()
+                    document.body.removeChild(a)
+                  } catch {}
+                }}
+              >
+                Export PNG
+              </button>
+            </div>
+          </div>
+        )}
+
+        {params.textureMode === 'custom' && (
+          <>
+            <div className="control-group">
+              <label className="control-label">
+                <span>Upload Texture</span>
+              </label>
+              <input
+                type="file"
+                accept="image/png, image/jpeg, image/webp"
+                onChange={(e) => {
+                  const file = e.target.files && e.target.files[0]
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = () => {
+                    onParamChange('customTexture', reader.result)
+                  }
+                  reader.readAsDataURL(file)
+                }}
+                className="control-input"
+              />
+            </div>
+            {params.customTexture && (
+              <div className="control-group">
+                <label className="control-label">
+                  <span>Preview</span>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <img
+                    src={params.customTexture}
+                    alt="Texture preview"
+                    style={{ width: 48, height: 48, imageRendering: 'pixelated', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)' }}
+                  />
+                  <button
+                    className="button-option"
+                    onClick={() => onParamChange('customTexture', null)}
+                  >
+                    Clear
+                  </button>
+                  <button
+                    className="button-option"
+                    onClick={async () => {
+                      try {
+                        const img = new Image()
+                        img.crossOrigin = 'anonymous'
+                        const loaded = new Promise((resolve, reject) => {
+                          img.onload = resolve
+                          img.onerror = reject
+                        })
+                        img.src = params.customTexture
+                        await loaded
+                        const c = document.createElement('canvas')
+                        c.width = img.width
+                        c.height = img.height
+                        const ctx = c.getContext('2d')
+                        ctx.imageSmoothingEnabled = false
+                        ctx.drawImage(img, 0, 0)
+                        const url = c.toDataURL('image/png')
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = 'vfx-texture.png'
+                        document.body.appendChild(a)
+                        a.click()
+                        document.body.removeChild(a)
+                      } catch {}
+                    }}
+                  >
+                    Export PNG
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Particle Shape */}

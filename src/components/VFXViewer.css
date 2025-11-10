@@ -64,6 +64,40 @@
   }
 }
 
+.texture-preview-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(20, 20, 24, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: saturate(120%) blur(8px);
+  padding: 6px 8px;
+  border-radius: 8px;
+  z-index: 10;
+}
+.texture-preview-overlay img {
+  width: 36px;
+  height: 36px;
+  image-rendering: pixelated;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.texture-preview-overlay .texture-download {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.texture-preview-overlay .texture-download:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 @media (min-width: 769px) {
   /* Make viewer cover full viewport on desktop */
   .vfx-viewer {
