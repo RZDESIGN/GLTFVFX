@@ -16,3 +16,9 @@ export const ARC_FLOW_MODE_OPTIONS = [
   { id: 'continuous', label: 'Continuous' },
   { id: 'burst', label: 'Burst Loop' }
 ]
+
+export const TEXTURE_MODE_OPTIONS = [
+  { id: 'none', label: 'None' },
+  { id: 'auto', label: 'Auto (blocky)' },
+  { id: 'custom', label: 'Custom (upload)' }
+]

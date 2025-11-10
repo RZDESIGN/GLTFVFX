@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import './VFXViewer.css'
 import { buildParticleSystemBlueprint } from '../utils/effectBlueprint'
+import { generateBlockyTexture, createTextureFromDataURL, disposeTexture } from '../utils/textureGenerator'
 
 const geometryCache = new Map()
 
@@ -59,7 +60,7 @@ const getGeometryFromConfig = (config = {}) => {
   return geometryCache.get(key)
 }
 
-const createMaterialForParticle = (style, state) => {
+const createMaterialForParticle = (style, state, mapTexture) => {
   const color = new THREE.Color(state.color)
 
   const material = new THREE.MeshStandardMaterial({
@@ -74,6 +75,10 @@ const createMaterialForParticle = (style, state) => {
   })
 
   material.side = THREE.DoubleSide
+  if (mapTexture) {
+    material.map = mapTexture
+    material.needsUpdate = true
+  }
   return material
 }
 
@@ -469,8 +474,19 @@ const VFXViewer = ({ params }) => {
 
     const geometry = getGeometryFromConfig(style.geometry)
 
+    let activeTexture = null
+    let disposed = false
+
+    if (params.textureMode === 'auto') {
+      activeTexture = generateBlockyTexture(
+        params.primaryColor,
+        params.secondaryColor,
+        params.textureResolution || 16
+      )
+    }
+
     particles.forEach(state => {
-      const material = createMaterialForParticle(style, state)
+      const material = createMaterialForParticle(style, state, activeTexture)
       const particle = new THREE.Mesh(geometry, material)
       particle.name = `Particle_${state.index}`
 
@@ -495,8 +511,40 @@ const VFXViewer = ({ params }) => {
 
     setParticleCount(particles.length)
 
+    // If custom texture is selected, load and apply asynchronously
+    if (params.textureMode === 'custom' && params.customTexture) {
+      ;(async () => {
+        try {
+          const tex = await createTextureFromDataURL(params.customTexture)
+          if (!tex) return
+          if (disposed || !particleSystemRef.current) {
+            disposeTexture(tex)
+            return
+          }
+          particleSystemRef.current.children.forEach(child => {
+            if (child.material) {
+              child.material.map = tex
+              child.material.needsUpdate = true
+            }
+          })
+          // Store on group for cleanup
+          particleSystemRef.current.userData.texture = tex
+        } catch (_) {
+          // ignore
+        }
+      })()
+    } else if (activeTexture) {
+      // Store on group for cleanup
+      particleSystem.userData.texture = activeTexture
+    }
+
     return () => {
       if (!particleSystemRef.current || !previewGroupRef.current) return
+      disposed = true
+      const tex = particleSystemRef.current.userData?.texture
+      if (tex) {
+        disposeTexture(tex)
+      }
       previewGroupRef.current.remove(particleSystemRef.current)
       particleSystemRef.current.children.forEach(child =>
         disposeMaterial(child.material)

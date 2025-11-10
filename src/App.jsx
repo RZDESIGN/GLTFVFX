@@ -13,6 +13,7 @@ const PARAM_FALLBACKS = {
   motionDirection: { x: 0, y: 1, z: 0 },
   motionAcceleration: { x: 0, y: 0, z: 0 },
   useArcEmitter: false,
+  opacity: 1,
   arcRadius: 3,
   arcStartAngle: Math.PI * 0.1,
   arcEndAngle: Math.PI * 0.9,
@@ -50,7 +51,10 @@ const defaultPreset = (() => {
 
 const initialParams = {
   effectType: 'fireball',
-  ...defaultPreset
+  ...defaultPreset,
+  textureMode: 'auto',
+  textureResolution: 16,
+  customTexture: null
 }
 
 const getRandomItem = (items, fallback) => {

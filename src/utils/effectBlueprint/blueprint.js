@@ -25,6 +25,17 @@ export const buildParticleSystemBlueprint = (params) => {
     })
   }
 
+  // Apply user-controlled opacity if provided
+  if (typeof params.opacity === 'number' && Number.isFinite(params.opacity)) {
+    const userOpacity = Math.max(0, Math.min(1, params.opacity))
+    style.opacityRange = [userOpacity, userOpacity]
+    if (userOpacity < 1 && style.alphaMode !== 'BLEND') {
+      style.alphaMode = 'BLEND'
+      // Prefer disabling depthWrite for proper blending
+      style.depthWrite = false
+    }
+  }
+
   if (style.customEmitter === 'vortex') {
     if (!style.spiralHeight && style.vortexHeight) {
       style.spiralHeight = style.vortexHeight

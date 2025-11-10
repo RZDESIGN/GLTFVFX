@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { buildParticleSystemBlueprint } from './effectBlueprint'
+import { generateBlockyTexture, createTextureFromDataURL, disposeTexture } from './textureGenerator'
 
 const createGeometryFromConfig = (config = {}) => {
   switch (config.type) {
@@ -39,7 +40,7 @@ const createGeometryFromConfig = (config = {}) => {
   }
 }
 
-const createMaterialForParticle = (style, state) => {
+const createMaterialForParticle = (style, state, mapTexture) => {
   const color = new THREE.Color(state.color)
 
   const material = new THREE.MeshStandardMaterial({
@@ -54,10 +55,14 @@ const createMaterialForParticle = (style, state) => {
   })
 
   material.side = THREE.DoubleSide
+  if (mapTexture) {
+    material.map = mapTexture
+    material.needsUpdate = true
+  }
   return material
 }
 
-const buildExportScene = (params) => {
+const buildExportScene = (params, mapTexture) => {
   const blueprint = buildParticleSystemBlueprint(params)
   const { style, particles, keyframeTimes } = blueprint
 
@@ -73,7 +78,7 @@ const buildExportScene = (params) => {
   const times = Array.from(keyframeTimes)
 
   particles.forEach(state => {
-    const material = createMaterialForParticle(style, state)
+    const material = createMaterialForParticle(style, state, mapTexture)
     materials.push(material)
 
     const mesh = new THREE.Mesh(geometry, material)
@@ -155,7 +160,22 @@ const buildExportScene = (params) => {
 }
 
 export const generateVFXGLTF = async (params) => {
-  const { scene, geometry, materials, clip, style } = buildExportScene(params)
+  let mapTexture = null
+  try {
+    if (params.textureMode === 'auto') {
+      mapTexture = generateBlockyTexture(
+        params.primaryColor,
+        params.secondaryColor,
+        params.textureResolution || 16
+      )
+    } else if (params.textureMode === 'custom' && params.customTexture) {
+      mapTexture = await createTextureFromDataURL(params.customTexture)
+    }
+  } catch (_) {
+    mapTexture = null
+  }
+
+  const { scene, geometry, materials, clip, style } = buildExportScene(params, mapTexture)
   const exporter = new GLTFExporter()
 
   try {
@@ -263,5 +283,8 @@ export const generateVFXGLTF = async (params) => {
     geometry.dispose()
     materials.forEach(material => material.dispose())
     scene.clear()
+    if (mapTexture) {
+      disposeTexture(mapTexture)
+    }
   }
 }
