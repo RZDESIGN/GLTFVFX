@@ -2,6 +2,7 @@ import './GeneratorPanel.css'
 import { EFFECT_PRESETS, PARTICLE_SHAPE_OPTIONS } from '../utils/effectBlueprint'
 import { ARC_FLOW_MODE_OPTIONS, EMISSION_SHAPE_OPTIONS, MOTION_DIRECTION_OPTIONS, TEXTURE_MODE_OPTIONS } from '../constants/uiOptions'
 import { generateBlockyCanvas } from '../utils/textureGenerator'
+import { downloadCanvasAsPNG } from '../utils/downloadHelpers'
 
 const animationTypeLabels = {
   orbit: 'Orbit',
@@ -354,16 +355,10 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
               })()}
               <button
                 className="button-option"
-                onClick={() => {
+                onClick={async () => {
                   try {
                     const c = generateBlockyCanvas(params.primaryColor, params.secondaryColor, params.textureResolution || 16)
-                    const url = c.toDataURL('image/png')
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = 'vfx-texture.png'
-                    document.body.appendChild(a)
-                    a.click()
-                    document.body.removeChild(a)
+                    await downloadCanvasAsPNG(c, 'vfx-texture.png')
                   } catch {}
                 }}
               >
@@ -429,13 +424,7 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
                         const ctx = c.getContext('2d')
                         ctx.imageSmoothingEnabled = false
                         ctx.drawImage(img, 0, 0)
-                        const url = c.toDataURL('image/png')
-                        const a = document.createElement('a')
-                        a.href = url
-                        a.download = 'vfx-texture.png'
-                        document.body.appendChild(a)
-                        a.click()
-                        document.body.removeChild(a)
+                        await downloadCanvasAsPNG(c, 'vfx-texture.png')
                       } catch {}
                     }}
                   >

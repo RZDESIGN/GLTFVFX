@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { buildParticleSystemBlueprint } from './effectBlueprint'
 import { generateBlockyTexture, createTextureFromDataURL, disposeTexture } from './textureGenerator'
+import { ensureNormalizedNormals } from './geometryUtils'
 
 const createGeometryFromConfig = (config = {}) => {
   switch (config.type) {
@@ -98,6 +99,8 @@ const buildExportScene = (params, mapTexture, textureBlend = 1) => {
 
   const geometry = createGeometryFromConfig(style.geometry)
   geometry.computeVertexNormals()
+  ensureNormalizedNormals(geometry)
+  geometry.normalizeNormals()
 
   const materials = []
   const tracks = []

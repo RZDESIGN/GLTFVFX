@@ -3,6 +3,8 @@ import * as THREE from 'three'
 import './VFXViewer.css'
 import { buildParticleSystemBlueprint } from '../utils/effectBlueprint'
 import { generateBlockyTexture, createTextureFromDataURL, disposeTexture, generateBlockyCanvas } from '../utils/textureGenerator'
+import { downloadCanvasAsPNG } from '../utils/downloadHelpers'
+import { ensureNormalizedNormals } from '../utils/geometryUtils'
 
 const geometryCache = new Map()
 
@@ -55,6 +57,7 @@ const getGeometryFromConfig = (config = {}) => {
   if (!geometryCache.has(key)) {
     const geometry = createGeometryFromConfig(config)
     geometry.computeVertexNormals()
+    ensureNormalizedNormals(geometry)
     geometryCache.set(key, geometry)
   }
   return geometryCache.get(key)
@@ -640,13 +643,7 @@ const VFXViewer = ({ params }) => {
               try {
                 if (params.textureMode === 'auto') {
                   const c = generateBlockyCanvas(params.primaryColor, params.secondaryColor, params.textureResolution || 16)
-                  const url = c.toDataURL('image/png')
-                  const a = document.createElement('a')
-                  a.href = url
-                  a.download = 'vfx-texture.png'
-                  document.body.appendChild(a)
-                  a.click()
-                  document.body.removeChild(a)
+                  await downloadCanvasAsPNG(c, 'vfx-texture.png')
                 } else if (params.textureMode === 'custom' && params.customTexture) {
                   const img = new Image()
                   img.crossOrigin = 'anonymous'
@@ -662,13 +659,7 @@ const VFXViewer = ({ params }) => {
                   const ctx = c.getContext('2d')
                   ctx.imageSmoothingEnabled = false
                   ctx.drawImage(img, 0, 0)
-                  const url = c.toDataURL('image/png')
-                  const a = document.createElement('a')
-                  a.href = url
-                  a.download = 'vfx-texture.png'
-                  document.body.appendChild(a)
-                  a.click()
-                  document.body.removeChild(a)
+                  await downloadCanvasAsPNG(c, 'vfx-texture.png')
                 }
               } catch {}
             }}

@@ -5,6 +5,7 @@ import GeneratorPanel from './components/GeneratorPanel'
 import { generateVFXGLTF } from './utils/vfxGenerator'
 import { EFFECT_PRESETS, getEffectPreset, PARTICLE_SHAPE_OPTIONS } from './utils/effectBlueprint'
 import { ARC_FLOW_MODE_OPTIONS, EMISSION_SHAPE_OPTIONS, MOTION_DIRECTION_OPTIONS } from './constants/uiOptions'
+import { triggerDownloadFromBlob } from './utils/downloadHelpers'
 
 const PARAM_FALLBACKS = {
   emissionSurfaceOnly: false,
@@ -126,15 +127,9 @@ function App() {
   const handleExportGLTF = async () => {
     try {
       const gltfData = await generateVFXGLTF(vfxParams)
-      const blob = new Blob([JSON.stringify(gltfData, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${vfxParams.effectType}-effect.gltf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
+      const serialized = typeof gltfData === 'string' ? gltfData : JSON.stringify(gltfData, null, 2)
+      const blob = new Blob([serialized], { type: 'application/json' })
+      triggerDownloadFromBlob(blob, `${vfxParams.effectType}-effect.gltf`)
 
       setTimeout(() => {
         alert('✨ GLTF exported!\n\nThe file includes geometry, materials, and looping animation data matching the on-screen effect.\n\nTip: Import into your engine or run through glTF validation if you need extra assurance.')
