@@ -395,9 +395,9 @@ const VFXViewer = ({ params }) => {
       isDragging.current = false
     }
 
-    canvasRef.current.addEventListener('touchstart', handleTouchStart)
-    canvasRef.current.addEventListener('touchmove', handleTouchMove)
-    canvasRef.current.addEventListener('touchend', handleTouchEnd)
+    canvasRef.current.addEventListener('touchstart', handleTouchStart, { passive: true })
+    canvasRef.current.addEventListener('touchmove', handleTouchMove, { passive: true })
+    canvasRef.current.addEventListener('touchend', handleTouchEnd, { passive: true })
 
     // Initial offset to compensate for right settings overlay
     updateSceneOffset()

@@ -16,6 +16,17 @@
   cursor: grabbing;
 }
 
+/* Ensure CharacterViewer's container fills the viewer so WebGLRenderer can size properly */
+.vfx-canvas-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .vfx-info {
   position: absolute;
   bottom: 1rem;
