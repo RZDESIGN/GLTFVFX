@@ -2,6 +2,7 @@ import { clamp, wrap01 } from './math'
 import { sampleGradient } from './colors'
 import { toVector3 } from './vectors'
 import { eulerToQuaternion, normalizeQuaternion } from './orientation'
+import { sampleEmitterMotion } from './emitterMotion'
 
 const EPSILON = 1e-5
 
@@ -77,7 +78,7 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
   const accelerationVec = state.acceleration || { x: 0, y: 0, z: 0 }
   const effectiveSpeedMultiplier = Math.max(0, 1 + (state.speedOffset ?? 0))
   const effectiveSpeed = Math.max(0, params.particleSpeed) * effectiveSpeedMultiplier
-  const emitterOffset = toVector3(params.emissionOffset)
+  const baseEmitterOffset = toVector3(params.emissionOffset)
 
   const duration = params.lifetime > 0 ? params.lifetime : 1
 
@@ -143,9 +144,24 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
     }
     const progress = duration === 0 ? 0 : sampleTime / duration
     const elapsed = sampleTime
-    let x = state.initialPosition.x
-    let y = state.initialPosition.y
-    let z = state.initialPosition.z
+    const motionOffset = state.emitterMotion ? sampleEmitterMotion(state.emitterMotion, time) : null
+    const emitterOffset = {
+      x: baseEmitterOffset.x + (motionOffset?.x || 0),
+      y: baseEmitterOffset.y + (motionOffset?.y || 0),
+      z: baseEmitterOffset.z + (motionOffset?.z || 0)
+    }
+    const emitterOffsetDelta = {
+      x: emitterOffset.x - baseEmitterOffset.x,
+      y: emitterOffset.y - baseEmitterOffset.y,
+      z: emitterOffset.z - baseEmitterOffset.z
+    }
+    const spawnX = state.initialPosition.x + emitterOffsetDelta.x
+    const spawnY = state.initialPosition.y + emitterOffsetDelta.y
+    const spawnZ = state.initialPosition.z + emitterOffsetDelta.z
+
+    let x = spawnX
+    let y = spawnY
+    let z = spawnZ
 
     let scaleX = state.scale.x
     let scaleY = state.scale.y
@@ -242,7 +258,7 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
           const delayedProgress = applyMotionDelay(progress, state.motionDelay)
           const risePhase = Math.min(delayedProgress / activeWindow, 1)
           const riseProgress = risePhase * riseHeight * riseSpeed
-          y = state.initialPosition.y + riseProgress
+          y = spawnY + riseProgress
 
           if (driftStrength > 0) {
             const drift = driftStrength
@@ -276,9 +292,9 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
           const fadeWindow = Math.max(0.05, 1 - activeWindow)
           const expansionProgress = Math.min(burstProgress / activeWindow, 1)
           const expansion = 1 + expansionProgress * explosionSpread
-          x = state.initialPosition.x * expansion
-          y = state.initialPosition.y * expansion
-          z = state.initialPosition.z * expansion
+          x = spawnX * expansion
+          y = spawnY * expansion
+          z = spawnZ * expansion
 
           const shrink = Math.max(0.12, 1 - expansionProgress * explosionShrink)
           scaleX = state.scale.x * shrink
@@ -347,7 +363,7 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
             x = emitterOffset.x + Math.cos(angle) * spiralRadius
             z = emitterOffset.z + Math.sin(angle) * spiralRadius
             y =
-              state.initialPosition.y +
+              spawnY +
               fractionalRevolution * spiralHeight
           }
 
@@ -374,7 +390,7 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
           x = emitterOffset.x + Math.cos(orbitAngle) * state.radius
           z = emitterOffset.z + Math.sin(orbitAngle) * state.radius
           y =
-            state.initialPosition.y +
+            spawnY +
             Math.sin(progress * Math.PI * 2 * (state.floatFrequency || 1) + state.orbitOffset) *
               state.floatStrength
           break

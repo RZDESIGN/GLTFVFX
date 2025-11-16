@@ -2,6 +2,7 @@ import { EFFECT_STYLES, getParticleShapeDefinition } from './constants'
 import { buildAnimationKeyframes } from './keyframes'
 import { buildParticleState } from './state'
 import { getEffectStyle } from './styles'
+import { compileEmitterMotion } from './emitterMotion'
 
 const clamp01 = (value) => {
   if (!Number.isFinite(value)) return 0
@@ -138,9 +139,10 @@ export const buildParticleSystemBlueprint = (params) => {
   }
 
   const particles = []
+  const emitterMotion = compileEmitterMotion(params.emitterMotion)
   for (let i = 0; i < count; i++) {
     const cycleOffset = useEmissionLoop ? (i / count) : 0
-    const state = buildParticleState(params, style, i, count)
+    const state = buildParticleState(params, style, i, count, emitterMotion)
     state.cycleOffset = cycleOffset
     const keyframes = buildAnimationKeyframes(params, style, state, times)
     particles.push({

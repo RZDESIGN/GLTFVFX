@@ -1,51 +1,112 @@
 import { createInitialParams, PARAM_FALLBACKS } from './vfxParameters'
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+const NUMBER_PATTERN = /-?(?:\d+\.?\d*|\.\d+)/g
 
 const extractNumbers = (value) => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return [value]
   }
   if (typeof value === 'string') {
-    const matches = value.match(/-?\d+(\.\d+)?/gi)
+    const matches = value.match(NUMBER_PATTERN)
     return matches ? matches.map(Number) : []
   }
   return []
 }
 
-const resolveNumber = (value, fallback = 0) => {
+const substituteVariables = (expression, context = {}, options = {}) => {
+  if (typeof expression !== 'string') {
+    return expression
+  }
+  const variables = context.variables || {}
+  const normalized = expression.replace(/variable\.([a-z0-9_]+)/gi, (_, rawName) => {
+    const name = rawName.toLowerCase()
+    if (options.variableOverrides && Object.prototype.hasOwnProperty.call(options.variableOverrides, name)) {
+      return `${options.variableOverrides[name]}`
+    }
+    if (Object.prototype.hasOwnProperty.call(variables, name)) {
+      return `${variables[name]}`
+    }
+    if (name.startsWith('particle_random')) {
+      const randomValue = options.random ?? context.random ?? 0.5
+      return `${randomValue}`
+    }
+    if (name === 'particle_age') {
+      if (options.particleAge !== undefined) {
+        return `${options.particleAge}`
+      }
+      if (context.particleAge !== undefined) {
+        return `${context.particleAge}`
+      }
+      if (variables.lifetime !== undefined) {
+        return `${variables.lifetime * 0.5}`
+      }
+      return '0'
+    }
+    if (name === 'emitter_age') {
+      const emitterAge = options.emitterAge ?? context.emitterAge ?? 0
+      return `${emitterAge}`
+    }
+    if (name === 'lifetime' && variables.lifetime !== undefined) {
+      return `${variables.lifetime}`
+    }
+    if (name === 'size' && variables.size !== undefined) {
+      return `${variables.size}`
+    }
+    return '0'
+  })
+  return normalized
+}
+
+const NUMERIC_EXPRESSION_PATTERN = /^[0-9+\-*/().\s]+$/
+
+const resolveNumber = (value, fallback = 0, context, options = {}) => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value
   }
   if (typeof value === 'string') {
-    const numbers = extractNumbers(value)
+    const normalized = substituteVariables(value, context, options)
+    const numbers = extractNumbers(normalized)
     if (numbers.length === 0) return fallback
-    if (/random/i.test(value) && numbers.length >= 2) {
+    if (/random/i.test(normalized) && numbers.length >= 2) {
       const min = Math.min(numbers[0], numbers[1])
       const max = Math.max(numbers[0], numbers[1])
       return (min + max) / 2
     }
-    if (/clamp/i.test(value) && numbers.length >= 1) {
+    if (/clamp/i.test(normalized) && numbers.length >= 1) {
       return numbers[0]
+    }
+    if (/math\.(sin|cos|tan)/i.test(normalized)) {
+      return numbers[numbers.length - 1] ?? fallback
+    }
+    if (NUMERIC_EXPRESSION_PATTERN.test(normalized.trim())) {
+      try {
+        const evaluated = Function('"use strict"; return (' + normalized + ');')()
+        if (typeof evaluated === 'number' && Number.isFinite(evaluated)) {
+          return evaluated
+        }
+      } catch (_) {
+        // ignore parsing failures
+      }
     }
     return numbers[0]
   }
   return fallback
 }
 
-const resolveVector3 = (value, fallback = PARAM_FALLBACKS.emissionOffset) => {
+const resolveVector3 = (value, fallback = PARAM_FALLBACKS.emissionOffset, context, options = {}) => {
   if (Array.isArray(value)) {
     return {
-      x: resolveNumber(value[0], fallback.x),
-      y: resolveNumber(value[1], fallback.y),
-      z: resolveNumber(value[2], fallback.z)
+      x: resolveNumber(value[0], fallback.x, context, options),
+      y: resolveNumber(value[1], fallback.y, context, options),
+      z: resolveNumber(value[2], fallback.z, context, options)
     }
   }
   if (value && typeof value === 'object') {
     return {
-      x: resolveNumber(value.x, fallback.x),
-      y: resolveNumber(value.y, fallback.y),
-      z: resolveNumber(value.z, fallback.z)
+      x: resolveNumber(value.x, fallback.x, context, options),
+      y: resolveNumber(value.y, fallback.y, context, options),
+      z: resolveNumber(value.z, fallback.z, context, options)
     }
   }
   return { ...fallback }
@@ -67,8 +128,32 @@ const adjustColor = (hex, delta = 0) => {
   const g = parseInt(normalized.slice(2, 4), 16)
   const b = parseInt(normalized.slice(4, 6), 16)
   const add = (channel) => clampChannel(channel + delta * 255)
-  const toHex = (channel) => add(channel).toString(16).padStart(2, '0')
+  const toHex = (channel) => Math.round(add(channel)).toString(16).padStart(2, '0')
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
+const AXES = ['x', 'y', 'z']
+const SAFE_MOTION_EXPRESSION = /^[0-9a-z_\-+*/().,\s:]*$/i
+
+const sanitizeEmitterMotionExpression = (expression) => {
+  if (typeof expression !== 'string') return null
+  const trimmed = expression.trim()
+  if (!trimmed || !/variable\.emitter_age/i.test(trimmed)) return null
+  if (!SAFE_MOTION_EXPRESSION.test(trimmed.replace(/math\.[a-z_]+/gi, '').replace(/variable\.emitter_age/gi, 'time'))) {
+    return null
+  }
+  return trimmed
+}
+
+const registerEmitterMotionAxis = (params, axis, expression) => {
+  const sanitized = sanitizeEmitterMotionExpression(expression)
+  if (!sanitized) return
+  const motion = ensureNested(params, 'emitterMotion', cloneEmitterMotionDefaults)
+  motion.mode = 'expression'
+  if (!motion.axisExpressions) {
+    motion.axisExpressions = { x: null, y: null, z: null }
+  }
+  motion.axisExpressions[axis] = sanitized
 }
 
 const toHexColor = (value, fallback = '#ffffff') => {
@@ -113,7 +198,7 @@ const findRadiusFromOffsetExpr = (expr) => {
   return fallbackSamples.length ? Math.max(...fallbackSamples) : null
 }
 
-const detectArcEmitterFromPointShape = (shape) => {
+const detectArcEmitterFromPointShape = (shape, context) => {
   if (!shape || !Array.isArray(shape.offset) || shape.offset.length < 2) {
     return null
   }
@@ -131,7 +216,7 @@ const detectArcEmitterFromPointShape = (shape) => {
   return {
     radius,
     thickness: Math.max(0.05, thicknessBase),
-    heightOffset: resolveNumber(zExpr, 0),
+    heightOffset: resolveNumber(zExpr, 0, context),
     startAngle: Math.PI * 0.05,
     endAngle: Math.PI * 0.95,
     flowSpeed: 0.65,
@@ -156,8 +241,46 @@ const cloneFlipbookDefaults = () => ({
   sizeUV: { ...PARAM_FALLBACKS.textureFlipbook.sizeUV },
   stepUV: { ...PARAM_FALLBACKS.textureFlipbook.stepUV }
 })
+const cloneEmitterMotionDefaults = () => ({
+  ...PARAM_FALLBACKS.emitterMotion,
+  axisExpressions: {
+    ...(PARAM_FALLBACKS.emitterMotion?.axisExpressions || {})
+  }
+})
 
-const pickEmitterShape = (components = {}, params, warnings) => {
+const parseEmitterInitialization = (components = {}) => {
+  const init = components['minecraft:emitter_initialization']
+  const variables = {}
+  if (!init || typeof init.creation_expression !== 'string') {
+    return variables
+  }
+  const statements = init.creation_expression.split(';')
+  statements.forEach(segment => {
+    const statement = segment.trim()
+    if (!statement) return
+    const match = statement.match(/^variable\.([a-z0-9_]+)\s*=\s*(.+)$/i)
+    if (!match) return
+    const [, rawName, expr] = match
+    const name = rawName.toLowerCase()
+    const value = resolveNumber(expr.trim(), NaN, { variables })
+    if (Number.isFinite(value)) {
+      variables[name] = value
+    }
+  })
+  return variables
+}
+
+const buildExpressionContext = (components = {}) => {
+  const variables = parseEmitterInitialization(components)
+  return {
+    variables,
+    random: 0.5,
+    emitterAge: 0,
+    particleAge: 0
+  }
+}
+
+const pickEmitterShape = (components = {}, params, warnings, context) => {
   const sphere = components['minecraft:emitter_shape_sphere']
   const disc = components['minecraft:emitter_shape_disc']
   const box = components['minecraft:emitter_shape_box']
@@ -167,7 +290,7 @@ const pickEmitterShape = (components = {}, params, warnings) => {
   if (!shape) return
 
   if (point) {
-    const arcConfig = detectArcEmitterFromPointShape(point)
+    const arcConfig = detectArcEmitterFromPointShape(point, context)
     if (arcConfig) {
       params.useArcEmitter = true
       params.emissionShape = 'disc'
@@ -186,14 +309,14 @@ const pickEmitterShape = (components = {}, params, warnings) => {
 
   if (sphere) {
     params.emissionShape = 'sphere'
-    params.spread = clamp(resolveNumber(sphere.radius, params.spread), 0.01, 6)
+    params.spread = clamp(resolveNumber(sphere.radius, params.spread, context), 0.01, 6)
   } else if (disc) {
     params.emissionShape = 'disc'
-    params.spread = clamp(resolveNumber(disc.radius, params.spread), 0.05, 6)
+    params.spread = clamp(resolveNumber(disc.radius, params.spread, context), 0.05, 6)
   } else if (box) {
     params.emissionShape = 'box'
     if (Array.isArray(box.half_dimensions)) {
-      const dims = box.half_dimensions.map(v => resolveNumber(v, 0.25))
+      const dims = box.half_dimensions.map(v => resolveNumber(v, 0.25, context))
       const avg = dims.reduce((sum, val) => sum + Math.abs(val), 0) / dims.length || 1
       params.spread = clamp(avg * 2, 0.1, 6)
     }
@@ -203,7 +326,27 @@ const pickEmitterShape = (components = {}, params, warnings) => {
   }
 
   if (shape.offset) {
-    params.emissionOffset = resolveVector3(shape.offset, params.emissionOffset)
+    if (Array.isArray(shape.offset)) {
+      const resolved = { ...params.emissionOffset }
+      shape.offset.forEach((component, index) => {
+        const axis = AXES[index]
+        if (!axis) return
+        if (typeof component === 'string' && /variable\.emitter_age/i.test(component)) {
+          registerEmitterMotionAxis(params, axis, component)
+          if (resolved[axis] === undefined) {
+            resolved[axis] = params.emissionOffset?.[axis] ?? 0
+          }
+        } else {
+          resolved[axis] = resolveNumber(component, resolved[axis] ?? params.emissionOffset?.[axis] ?? 0, context)
+        }
+      })
+      params.emissionOffset = {
+        ...params.emissionOffset,
+        ...resolved
+      }
+    } else {
+      params.emissionOffset = resolveVector3(shape.offset, params.emissionOffset, context)
+    }
   }
   if (typeof shape.surface_only === 'boolean') {
     params.emissionSurfaceOnly = shape.surface_only
@@ -215,7 +358,7 @@ const pickEmitterShape = (components = {}, params, warnings) => {
       params.motionDirectionMode = lower
     }
   } else if (shape.direction && (Array.isArray(shape.direction) || typeof shape.direction === 'object')) {
-    const approximation = resolveVector3(shape.direction, params.motionDirection || PARAM_FALLBACKS.motionDirection)
+    const approximation = resolveVector3(shape.direction, params.motionDirection || PARAM_FALLBACKS.motionDirection, context)
     const magnitude = Math.hypot(approximation.x || 0, approximation.y || 0, approximation.z || 0)
     if (magnitude > 1e-3) {
       params.motionDirectionMode = 'custom'
@@ -228,66 +371,72 @@ const pickEmitterShape = (components = {}, params, warnings) => {
   }
 }
 
-const pickLifetime = (components = {}, params) => {
+const pickLifetime = (components = {}, params, context) => {
   const expression = components['minecraft:particle_lifetime_expression']
   const constant = components['minecraft:particle_lifetime_constant']
   const linear = components['minecraft:particle_lifetime_linear']
   const source = expression || constant || linear || null
   if (!source) return
-  const lifetime = resolveNumber(source.max_lifetime, params.lifetime)
+  const lifetime = resolveNumber(source.max_lifetime, params.lifetime, context)
   params.lifetime = clamp(lifetime, 0.2, 10)
 }
 
-const pickRate = (components = {}, params) => {
+const pickRate = (components = {}, params, context) => {
   const steady = components['minecraft:emitter_rate_steady']
   const instant = components['minecraft:emitter_rate_instant']
   const emitter = ensureNested(params, 'emitter', cloneEmitterDefaults)
   if (steady) {
     emitter.rateMode = 'steady'
-    emitter.spawnRate = clamp(resolveNumber(steady.spawn_rate, emitter.spawnRate), 0, 10000)
-    emitter.maxParticles = clamp(resolveNumber(steady.max_particles, emitter.maxParticles), 1, 50000)
+    emitter.spawnRate = clamp(resolveNumber(steady.spawn_rate, emitter.spawnRate, context), 0, 10000)
+    emitter.maxParticles = clamp(resolveNumber(steady.max_particles, emitter.maxParticles, context), 1, 50000)
     const estimate = Math.max(emitter.spawnRate * params.lifetime, emitter.maxParticles || 0)
     params.particleCount = clamp(Math.round(estimate || emitter.spawnRate || params.particleCount), 8, 200)
     return
   }
   if (instant) {
     emitter.rateMode = 'instant'
-    emitter.burstAmount = clamp(resolveNumber(instant.amount, emitter.burstAmount), 1, 5000)
-    emitter.maxParticles = clamp(resolveNumber(instant.max_particles, emitter.maxParticles), 1, 50000)
+    emitter.burstAmount = clamp(resolveNumber(instant.amount, emitter.burstAmount, context), 1, 5000)
+    emitter.maxParticles = clamp(resolveNumber(instant.max_particles, emitter.maxParticles, context), 1, 50000)
     params.particleCount = clamp(Math.round(emitter.burstAmount || params.particleCount), 8, 200)
   }
 }
 
-const pickSpeed = (components = {}, params) => {
+const pickSpeed = (components = {}, params, context) => {
   const speed = components['minecraft:particle_initial_speed']
   if (speed !== undefined) {
-    params.particleSpeed = clamp(resolveNumber(speed, params.particleSpeed), 0, 12)
+    params.particleSpeed = clamp(resolveNumber(speed, params.particleSpeed, context), 0, 12)
   }
 }
 
-const pickAcceleration = (components = {}, params) => {
+const pickAcceleration = (components = {}, params, context) => {
   const motion = components['minecraft:particle_motion_dynamic']
   if (motion?.linear_acceleration) {
-    params.motionAcceleration = resolveVector3(motion.linear_acceleration, params.motionAcceleration)
+    params.motionAcceleration = resolveVector3(motion.linear_acceleration, params.motionAcceleration, context)
   }
   if (motion?.linear_drag_coefficient !== undefined) {
-    params.motionDrag = resolveNumber(motion.linear_drag_coefficient, params.motionDrag || 0)
+    params.motionDrag = resolveNumber(motion.linear_drag_coefficient, params.motionDrag || 0, context)
   }
 }
 
-const pickSize = (components = {}, params) => {
+const pickSize = (components = {}, params, context) => {
   const appearance = components['minecraft:particle_appearance_billboard']
   if (!appearance) return
   const size = appearance.size
   if (Array.isArray(size)) {
-    const avg = (resolveNumber(size[0], params.particleSize) + resolveNumber(size[1], params.particleSize)) / 2
+    const avg =
+      (resolveNumber(size[0], params.particleSize, context, { particleAge: 0 }) +
+        resolveNumber(size[1], params.particleSize, context, { particleAge: 0 })) / 2
     params.particleSize = clamp(Math.abs(avg) || params.particleSize, 0.02, 2)
   } else if (typeof size === 'number' || typeof size === 'string') {
-    params.particleSize = clamp(Math.abs(resolveNumber(size, params.particleSize)) || params.particleSize, 0.02, 2)
+    params.particleSize = clamp(
+      Math.abs(resolveNumber(size, params.particleSize, context, { particleAge: 0 })) || params.particleSize,
+      0.02,
+      2
+    )
   }
 }
 
-const pickColors = (components = {}, params, warnings) => {
+const pickColors = (components = {}, params, warnings, context) => {
   const tint = components['minecraft:particle_appearance_tinting']
   if (!tint?.color) return
 
@@ -306,9 +455,9 @@ const pickColors = (components = {}, params, warnings) => {
   }
 
   const colorValues = Array.isArray(tint.color) ? tint.color : [tint.color]
-  const r = resolveNumber(colorValues[0], 1)
-  const g = resolveNumber(colorValues[1], 1)
-  const b = resolveNumber(colorValues[2], 1)
+  const r = resolveNumber(colorValues[0], 1, context)
+  const g = resolveNumber(colorValues[1], 1, context)
+  const b = resolveNumber(colorValues[2], 1, context)
   const primary = colorFromNormalized(r, g, b)
   const secondary = adjustColor(primary, 0.1)
   params.primaryColor = primary
@@ -327,20 +476,20 @@ const pickEmitterSpace = (components = {}, params) => {
   emitterSpace.localVelocity = !!config.velocity
 }
 
-const pickEmitterLifetime = (components = {}, params, warnings) => {
+const pickEmitterLifetime = (components = {}, params, warnings, context) => {
   const looping = components['minecraft:emitter_lifetime_looping']
   const once = components['minecraft:emitter_lifetime_once']
   const expression = components['minecraft:emitter_lifetime_expression']
   const emitter = ensureNested(params, 'emitter', cloneEmitterDefaults)
   if (looping) {
     emitter.lifetimeMode = 'looping'
-    emitter.activeTime = Math.max(0, resolveNumber(looping.active_time, emitter.activeTime))
-    emitter.sleepTime = Math.max(0, resolveNumber(looping.sleep_time, emitter.sleepTime))
+    emitter.activeTime = Math.max(0, resolveNumber(looping.active_time, emitter.activeTime, context))
+    emitter.sleepTime = Math.max(0, resolveNumber(looping.sleep_time, emitter.sleepTime, context))
     return
   }
   if (once) {
     emitter.lifetimeMode = 'once'
-    emitter.onceDuration = Math.max(0, resolveNumber(once.active_time, emitter.onceDuration))
+    emitter.onceDuration = Math.max(0, resolveNumber(once.active_time, emitter.onceDuration, context))
     return
   }
   if (expression) {
@@ -357,27 +506,27 @@ const pickEmitterLifetime = (components = {}, params, warnings) => {
   emitter.loopParticles = emitter.rateMode === 'steady' && emitter.lifetimeMode !== 'once'
 }
 
-const pickRotation = (components = {}, params) => {
+const pickRotation = (components = {}, params, context) => {
   const spin = components['minecraft:particle_initial_spin']
   if (!spin) return
   const rotation = ensureNested(params, 'rotation', cloneRotationDefaults)
   rotation.mode = 'dynamic'
-  rotation.rate = resolveNumber(spin.rotation_rate, rotation.rate)
-  rotation.acceleration = resolveNumber(spin.rotation_acceleration, rotation.acceleration)
+  rotation.rate = resolveNumber(spin.rotation_rate, rotation.rate, context)
+  rotation.acceleration = resolveNumber(spin.rotation_acceleration, rotation.acceleration, context)
 }
 
-const pickCollision = (components = {}, params) => {
+const pickCollision = (components = {}, params, context) => {
   const collision = components['minecraft:particle_motion_collision']
   if (!collision) return
   const state = ensureNested(params, 'collision', cloneCollisionDefaults)
   state.enabled = true
-  state.radius = Math.max(0, resolveNumber(collision.collision_radius, state.radius))
-  state.drag = resolveNumber(collision.collision_drag, state.drag)
-  state.bounciness = resolveNumber(collision.coefficient_of_restitution, state.bounciness)
+  state.radius = Math.max(0, resolveNumber(collision.collision_radius, state.radius, context))
+  state.drag = resolveNumber(collision.collision_drag, state.drag, context)
+  state.bounciness = resolveNumber(collision.coefficient_of_restitution, state.bounciness, context)
   state.expireOnContact = !!collision.expire_on_contact
 }
 
-const pickFacingAndUV = (components = {}, params) => {
+const pickFacingAndUV = (components = {}, params, context) => {
   const appearance = components['minecraft:particle_appearance_billboard']
   if (!appearance) return
   if (appearance.facing_camera_mode) {
@@ -387,45 +536,45 @@ const pickFacingAndUV = (components = {}, params) => {
     params.billboardDirectionMode = appearance.direction_mode
   }
   if (appearance.direction) {
-    params.billboardCustomDirection = resolveVector3(appearance.direction, params.billboardCustomDirection)
+    params.billboardCustomDirection = resolveVector3(appearance.direction, params.billboardCustomDirection, context)
   }
   if (appearance.speed_threshold !== undefined) {
-    params.billboardSpeedThreshold = Math.max(0, resolveNumber(appearance.speed_threshold, params.billboardSpeedThreshold))
+    params.billboardSpeedThreshold = Math.max(0, resolveNumber(appearance.speed_threshold, params.billboardSpeedThreshold, context))
   }
   if (appearance.uv) {
     const uv = appearance.uv
     if (Array.isArray(uv.uv)) {
       params.uvOffset = {
-        u: resolveNumber(uv.uv[0], params.uvOffset.u),
-        v: resolveNumber(uv.uv[1], params.uvOffset.v)
+        u: resolveNumber(uv.uv[0], params.uvOffset.u, context),
+        v: resolveNumber(uv.uv[1], params.uvOffset.v, context)
       }
     }
     if (Array.isArray(uv.uv_size)) {
       params.uvSize = {
-        u: resolveNumber(uv.uv_size[0], params.uvSize.u),
-        v: resolveNumber(uv.uv_size[1], params.uvSize.v)
+        u: resolveNumber(uv.uv_size[0], params.uvSize.u, context),
+        v: resolveNumber(uv.uv_size[1], params.uvSize.v, context)
       }
     }
     const flip = uv.flipbook
     if (flip) {
       const flipbook = ensureNested(params, 'textureFlipbook', cloneFlipbookDefaults)
       flipbook.enabled = true
-      flipbook.textureWidth = resolveNumber(uv.texture_width, flipbook.textureWidth)
-      flipbook.textureHeight = resolveNumber(uv.texture_height, flipbook.textureHeight)
+      flipbook.textureWidth = resolveNumber(uv.texture_width, flipbook.textureWidth, context)
+      flipbook.textureHeight = resolveNumber(uv.texture_height, flipbook.textureHeight, context)
       flipbook.baseUV = {
-        u: resolveNumber(flip.base_UV?.[0], flipbook.baseUV.u),
-        v: resolveNumber(flip.base_UV?.[1], flipbook.baseUV.v)
+        u: resolveNumber(flip.base_UV?.[0], flipbook.baseUV.u, context),
+        v: resolveNumber(flip.base_UV?.[1], flipbook.baseUV.v, context)
       }
       flipbook.sizeUV = {
-        u: resolveNumber(flip.size_UV?.[0], flipbook.sizeUV.u),
-        v: resolveNumber(flip.size_UV?.[1], flipbook.sizeUV.v)
+        u: resolveNumber(flip.size_UV?.[0], flipbook.sizeUV.u, context),
+        v: resolveNumber(flip.size_UV?.[1], flipbook.sizeUV.v, context)
       }
       flipbook.stepUV = {
-        u: resolveNumber(flip.step_UV?.[0], flipbook.stepUV.u),
-        v: resolveNumber(flip.step_UV?.[1], flipbook.stepUV.v)
+        u: resolveNumber(flip.step_UV?.[0], flipbook.stepUV.u, context),
+        v: resolveNumber(flip.step_UV?.[1], flipbook.stepUV.v, context)
       }
-      flipbook.maxFrame = Math.max(1, resolveNumber(flip.max_frame, flipbook.maxFrame))
-      flipbook.fps = Math.max(0, resolveNumber(flip.frames_per_second ?? uv.frames_per_second, flipbook.fps))
+      flipbook.maxFrame = Math.max(1, resolveNumber(flip.max_frame, flipbook.maxFrame, context))
+      flipbook.fps = Math.max(0, resolveNumber(flip.frames_per_second ?? uv.frames_per_second, flipbook.fps, context))
       flipbook.stretchToLifetime = !!flip.stretch_to_lifetime
       flipbook.loop = flip.loop !== undefined ? !!flip.loop : flipbook.loop
     }
@@ -479,19 +628,28 @@ export const convertSnowstormToVfxParams = (raw) => {
 
   applyMaterialDefaults(description, params)
   const components = effect.components || {}
+  const expressionContext = buildExpressionContext(components)
+  const initVars = expressionContext.variables || {}
 
-  pickEmitterShape(components, params, warnings)
-  pickLifetime(components, params)
-  pickRate(components, params)
-  pickSpeed(components, params)
-  pickAcceleration(components, params)
-  pickSize(components, params)
-  pickColors(components, params, warnings)
+  if (Number.isFinite(initVars.lifetime)) {
+    params.lifetime = clamp(Math.abs(initVars.lifetime), 0.2, 10)
+  }
+  if (Number.isFinite(initVars.size)) {
+    params.particleSize = clamp(Math.abs(initVars.size), 0.02, 2)
+  }
+
+  pickEmitterShape(components, params, warnings, expressionContext)
+  pickLifetime(components, params, expressionContext)
+  pickRate(components, params, expressionContext)
+  pickSpeed(components, params, expressionContext)
+  pickAcceleration(components, params, expressionContext)
+  pickSize(components, params, expressionContext)
+  pickColors(components, params, warnings, expressionContext)
   pickEmitterSpace(components, params)
-  pickEmitterLifetime(components, params, warnings)
-  pickRotation(components, params)
-  pickCollision(components, params)
-  pickFacingAndUV(components, params)
+  pickEmitterLifetime(components, params, warnings, expressionContext)
+  pickRotation(components, params, expressionContext)
+  pickCollision(components, params, expressionContext)
+  pickFacingAndUV(components, params, expressionContext)
 
   params.importMetadata = buildImportMetadata(description)
   if (!params.importMetadata.texturePath) {

@@ -15,7 +15,7 @@ import {
   vectorLength
 } from './vectors'
 
-export const buildParticleState = (params, style, index, totalCount = 1) => {
+export const buildParticleState = (params, style, index, totalCount = 1, emitterMotion = null) => {
   const random = createRandomGenerator(params.effectType, index)
   const baseSize = Math.max(0.02, params.particleSize * (style.sizeMultiplier ?? 1))
   const sizeVariation = (random(1) - 0.5) * (style.sizeJitter ?? 0) * baseSize * 2
@@ -229,7 +229,8 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
     }
   }
 
-  const initialPosition = addVectors(relativePosition, emitterOffset)
+  const spawnRelativePosition = { ...relativePosition }
+  const initialPosition = addVectors(spawnRelativePosition, emitterOffset)
 
   const radius = emissionRadius ?? Math.hypot(relativePosition.x, relativePosition.z)
   const baseRadius = emissionBaseRadius ?? radius
@@ -406,6 +407,7 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
     emissiveIntensity,
     scale,
     initialPosition,
+    relativePosition: spawnRelativePosition,
     colorGradient: colorGradientState,
     radius,
     baseRadius,
@@ -437,6 +439,7 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
     clusterAnchor,
     clusterIndex,
     motionDelay,
-    collision: collisionState
+    collision: collisionState,
+    emitterMotion
   }
 }

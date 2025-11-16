@@ -50,6 +50,15 @@ const DEFAULT_EMITTER_SPACE = {
   localVelocity: false
 }
 
+const DEFAULT_EMITTER_MOTION = {
+  mode: 'none',
+  axisExpressions: {
+    x: null,
+    y: null,
+    z: null
+  }
+}
+
 const PARAM_FALLBACKS = {
   effectIdentifier: 'hytopia:effect',
   effectDescription: '',
@@ -73,6 +82,7 @@ const PARAM_FALLBACKS = {
   rotation: { ...DEFAULT_ROTATION },
   collision: { ...DEFAULT_COLLISION },
   textureFlipbook: { ...DEFAULT_FLIPBOOK },
+  emitterMotion: { ...DEFAULT_EMITTER_MOTION, axisExpressions: { ...DEFAULT_EMITTER_MOTION.axisExpressions } },
   uvOffset: { u: 0, v: 0 },
   uvSize: { u: 1, v: 1 },
   billboardFacing: 'rotate_xyz',
@@ -170,6 +180,15 @@ const cloneCollision = (source = DEFAULT_COLLISION) => ({
   ...source
 })
 
+const cloneEmitterMotion = (source = DEFAULT_EMITTER_MOTION) => ({
+  ...DEFAULT_EMITTER_MOTION,
+  ...source,
+  axisExpressions: {
+    ...(DEFAULT_EMITTER_MOTION.axisExpressions),
+    ...(source?.axisExpressions || {})
+  }
+})
+
 const buildPresetParams = (effectType = 'fireball') => {
   const preset = getEffectPreset(effectType) || {}
   const merged = {
@@ -187,6 +206,7 @@ const buildPresetParams = (effectType = 'fireball') => {
     emitterSpace: cloneEmitterSpace(merged.emitterSpace),
     rotation: cloneRotation(merged.rotation),
     collision: cloneCollision(merged.collision),
+    emitterMotion: cloneEmitterMotion(merged.emitterMotion),
     textureFlipbook: cloneFlipbook(merged.textureFlipbook),
     uvOffset: { ...(merged.uvOffset || PARAM_FALLBACKS.uvOffset) },
     uvSize: { ...(merged.uvSize || PARAM_FALLBACKS.uvSize) },
@@ -282,6 +302,7 @@ export const createRandomParams = () => {
     emitterSpace: cloneEmitterSpace(),
     rotation: cloneRotation(),
     collision: cloneCollision(),
+    emitterMotion: cloneEmitterMotion(),
     textureFlipbook: cloneFlipbook(),
     uvOffset: { ...PARAM_FALLBACKS.uvOffset },
     uvSize: { ...PARAM_FALLBACKS.uvSize },
