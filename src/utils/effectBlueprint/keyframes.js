@@ -4,6 +4,7 @@ import { toVector3 } from './vectors'
 import { eulerToQuaternion, normalizeQuaternion } from './orientation'
 
 export const buildAnimationKeyframes = (params, style, state, times) => {
+  const emitterLoops = !!state.loopsForever
   const positions = new Float32Array(times.length * 3)
   const rotations = new Float32Array(times.length * 4)
   const scales = new Float32Array(times.length * 3)
@@ -64,8 +65,15 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
 
   for (let i = 0; i < times.length; i++) {
     const time = times[i]
-    const progress = duration === 0 ? 0 : Math.min(1, time / duration)
-    const elapsed = time
+    let sampleTime
+    if (emitterLoops && duration > 0) {
+      const offset = (state.cycleOffset || 0) * duration
+      sampleTime = (time + offset) % duration
+    } else {
+      sampleTime = Math.min(time, duration)
+    }
+    const progress = duration === 0 ? 0 : sampleTime / duration
+    const elapsed = sampleTime
     let x = state.initialPosition.x
     let y = state.initialPosition.y
     let z = state.initialPosition.z
@@ -284,6 +292,9 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
           scaleZ = state.scale.z * scaleFactor
           break
         }
+        case 'custom': {
+          break
+        }
         case 'orbit':
         default: {
           const orbitTurns = Math.max(1, effectiveSpeed)
@@ -298,6 +309,16 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
           break
         }
       }
+    }
+
+    const fadeWindow = emitterLoops ? Math.max(0.05, style.emitterFadeWindow ?? 0.15) : 0
+    if (emitterLoops && progress > 1 - fadeWindow) {
+      const fadeT = clamp((progress - (1 - fadeWindow)) / fadeWindow, 0, 1)
+      const vanish = Math.pow(Math.max(0, 1 - fadeT), 1.35)
+      scaleX *= vanish
+      scaleY *= vanish
+      scaleZ *= vanish
+      allowVelocityBlend = false
     }
 
     if (
