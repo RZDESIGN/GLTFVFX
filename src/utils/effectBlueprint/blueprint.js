@@ -130,7 +130,8 @@ export const buildParticleSystemBlueprint = (params) => {
     style.maxParticles || 160
   )
 
-  const steps = Math.max(style.keyframeSteps || 6, 4)
+  const minStepCount = params?.collision?.enabled ? 12 : 4
+  const steps = Math.max(style.keyframeSteps || 6, minStepCount)
   const times = new Float32Array(steps)
   for (let i = 0; i < steps; i++) {
     times[i] = (params.lifetime * i) / (steps - 1)

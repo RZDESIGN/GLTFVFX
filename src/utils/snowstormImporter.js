@@ -214,6 +214,17 @@ const pickEmitterShape = (components = {}, params, warnings) => {
     if (lower === 'outwards' || lower === 'inwards') {
       params.motionDirectionMode = lower
     }
+  } else if (shape.direction && (Array.isArray(shape.direction) || typeof shape.direction === 'object')) {
+    const approximation = resolveVector3(shape.direction, params.motionDirection || PARAM_FALLBACKS.motionDirection)
+    const magnitude = Math.hypot(approximation.x || 0, approximation.y || 0, approximation.z || 0)
+    if (magnitude > 1e-3) {
+      params.motionDirectionMode = 'custom'
+      params.motionDirection = {
+        x: approximation.x / magnitude,
+        y: approximation.y / magnitude,
+        z: approximation.z / magnitude
+      }
+    }
   }
 }
 

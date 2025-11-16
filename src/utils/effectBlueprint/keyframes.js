@@ -3,6 +3,31 @@ import { sampleGradient } from './colors'
 import { toVector3 } from './vectors'
 import { eulerToQuaternion, normalizeQuaternion } from './orientation'
 
+const EPSILON = 1e-5
+
+const solveImpactTime = (startHeight, velocity, acceleration, floorHeight) => {
+  if (!Number.isFinite(startHeight) || !Number.isFinite(floorHeight)) return null
+  if (startHeight <= floorHeight + EPSILON) {
+    return 0
+  }
+  const a = 0.5 * acceleration
+  const b = velocity
+  const c = startHeight - floorHeight
+  if (Math.abs(a) < EPSILON) {
+    if (Math.abs(b) < EPSILON) return null
+    const t = -c / b
+    return t >= 0 ? t : null
+  }
+  const discriminant = b * b - 4 * a * c
+  if (discriminant < 0) return null
+  const sqrtDisc = Math.sqrt(discriminant)
+  const t1 = (-b - sqrtDisc) / (2 * a)
+  const t2 = (-b + sqrtDisc) / (2 * a)
+  const candidates = [t1, t2].filter(value => Number.isFinite(value) && value >= 0)
+  if (!candidates.length) return null
+  return Math.min(...candidates)
+}
+
 export const buildAnimationKeyframes = (params, style, state, times) => {
   const emitterLoops = !!state.loopsForever
   const positions = new Float32Array(times.length * 3)
@@ -55,6 +80,41 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
   const emitterOffset = toVector3(params.emissionOffset)
 
   const duration = params.lifetime > 0 ? params.lifetime : 1
+
+  const collisionConfig = state.collision
+  const collisionsSupported =
+    !!collisionConfig && params.animationType === 'custom' && !isRainbowArc
+  const collisionRadius = collisionsSupported ? Math.max(0, collisionConfig.radius ?? 0) : 0
+  const collisionPlaneHeight = collisionsSupported
+    ? collisionConfig.floorHeight ?? 0
+    : null
+  const collisionDetectionHeight =
+    collisionsSupported && collisionPlaneHeight !== null
+      ? collisionPlaneHeight + collisionRadius
+      : null
+  const collisionDrag = collisionsSupported ? Math.max(0, collisionConfig.drag ?? 0) : 0
+  const collisionBounciness = collisionsSupported
+    ? clamp(collisionConfig.bounciness ?? 0, 0, 1)
+    : 0
+  const collisionExpireOnContact = collisionsSupported
+    ? !!collisionConfig.expireOnContact
+    : false
+  let collisionImpactTime = null
+  if (collisionsSupported && collisionDetectionHeight !== null && Number.isFinite(duration)) {
+    collisionImpactTime = solveImpactTime(
+      state.initialPosition.y,
+      velocityVec.y,
+      accelerationVec.y,
+      collisionDetectionHeight
+    )
+    if (collisionImpactTime !== null && collisionImpactTime > duration) {
+      collisionImpactTime = null
+    }
+  }
+  const hasCollision = collisionsSupported && collisionImpactTime !== null
+  const collisionImpactVelocity = hasCollision
+    ? velocityVec.y + accelerationVec.y * collisionImpactTime
+    : 0
 
   const applyMotionDelay = (progress, delay) => {
     if (!delay) return progress
@@ -322,6 +382,10 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
       }
     }
 
+    const basePosition = { x, y, z }
+    let rawMotionPosition = { ...basePosition }
+    let collisionPositionAtImpact = { ...basePosition }
+
     const fadeWindow = emitterLoops ? Math.max(0.05, style.emitterFadeWindow ?? 0.15) : 0
     if (emitterLoops && progress > 1 - fadeWindow) {
       const fadeT = clamp((progress - (1 - fadeWindow)) / fadeWindow, 0, 1)
@@ -333,15 +397,78 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
       velocityContributionTime = Math.min(velocityContributionTime, fadeStartTime)
     }
 
-    if (
-      velocityContributionTime > 0 &&
+    const velocityActive =
       !isRainbowArc &&
-      (velocityVec.x !== 0 || velocityVec.y !== 0 || velocityVec.z !== 0 || accelerationVec.x !== 0 || accelerationVec.y !== 0 || accelerationVec.z !== 0)
-    ) {
-      const halfTimeSquared = 0.5 * velocityContributionTime * velocityContributionTime
-      x += velocityVec.x * velocityContributionTime + accelerationVec.x * halfTimeSquared
-      y += velocityVec.y * velocityContributionTime + accelerationVec.y * halfTimeSquared
-      z += velocityVec.z * velocityContributionTime + accelerationVec.z * halfTimeSquared
+      (velocityVec.x !== 0 ||
+        velocityVec.y !== 0 ||
+        velocityVec.z !== 0 ||
+        accelerationVec.x !== 0 ||
+        accelerationVec.y !== 0 ||
+        accelerationVec.z !== 0)
+
+    let computePositionAtTime = null
+    if (velocityActive) {
+      computePositionAtTime = (timeAmount) => {
+        if (!timeAmount || timeAmount <= 0) {
+          return { x: basePosition.x, y: basePosition.y, z: basePosition.z }
+        }
+        const travelTime = Math.max(0, timeAmount)
+        const halfTimeSquared = 0.5 * travelTime * travelTime
+        return {
+          x: basePosition.x + velocityVec.x * travelTime + accelerationVec.x * halfTimeSquared,
+          y: basePosition.y + velocityVec.y * travelTime + accelerationVec.y * halfTimeSquared,
+          z: basePosition.z + velocityVec.z * travelTime + accelerationVec.z * halfTimeSquared
+        }
+      }
+    }
+
+    if (velocityContributionTime > 0 && computePositionAtTime) {
+      rawMotionPosition = computePositionAtTime(velocityContributionTime)
+      x = rawMotionPosition.x
+      y = rawMotionPosition.y
+      z = rawMotionPosition.z
+    }
+
+    if (hasCollision && computePositionAtTime) {
+      collisionPositionAtImpact = computePositionAtTime(collisionImpactTime)
+      if (elapsed >= collisionImpactTime) {
+        x = collisionPositionAtImpact.x
+        y = collisionPositionAtImpact.y
+        z = collisionPositionAtImpact.z
+      }
+    }
+
+    if (hasCollision) {
+      if (elapsed >= collisionImpactTime) {
+        const slideSource = rawMotionPosition
+        const settleTime = Math.max(0, elapsed - collisionImpactTime)
+        const damping = collisionDrag > 0 ? Math.exp(-collisionDrag * settleTime) : 1
+        x =
+          collisionPositionAtImpact.x +
+          (slideSource.x - collisionPositionAtImpact.x) * damping
+        z =
+          collisionPositionAtImpact.z +
+          (slideSource.z - collisionPositionAtImpact.z) * damping
+        const floorHeight = collisionPlaneHeight ?? collisionPositionAtImpact.y
+        let restHeight = floorHeight
+        if (collisionBounciness > 0 && Math.abs(collisionImpactVelocity) > EPSILON) {
+          const bounceDecay = collisionDrag > 0 ? Math.exp(-collisionDrag * settleTime) : 1
+          const bounceHeight =
+            Math.abs(collisionImpactVelocity) * collisionBounciness * 0.1 * bounceDecay
+          restHeight = Math.max(floorHeight, floorHeight + bounceHeight)
+        }
+        y = restHeight
+        if (collisionExpireOnContact) {
+          const fadeDuration = Math.max(0.05, duration * 0.2)
+          const fadeProgress = clamp(settleTime / fadeDuration, 0, 1)
+          const vanish = Math.pow(Math.max(0, 1 - fadeProgress), 1.35)
+          scaleX *= vanish
+          scaleY *= vanish
+          scaleZ *= vanish
+        }
+      } else if (collisionPlaneHeight !== null && y < collisionPlaneHeight) {
+        y = collisionPlaneHeight
+      }
     }
 
     if (colors && gradientStops) {

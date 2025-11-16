@@ -260,6 +260,13 @@ export const PANEL_SECTIONS = [
       },
       {
         type: 'number',
+        key: 'collision.floorHeight',
+        label: 'Floor Height',
+        step: 0.1,
+        visibleWhen: params => !!params.collision?.enabled
+      },
+      {
+        type: 'number',
         key: 'collision.drag',
         label: 'Collision Drag',
         visibleWhen: params => !!params.collision?.enabled

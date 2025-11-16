@@ -19,7 +19,8 @@ const DEFAULT_COLLISION = {
   radius: 0.1,
   drag: 0,
   bounciness: 0,
-  expireOnContact: false
+  expireOnContact: false,
+  floorHeight: 0
 }
 
 const DEFAULT_ROTATION = {

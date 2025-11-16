@@ -384,6 +384,21 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
     arcTravelOffset = 0
   }
 
+  let collisionState = null
+  const collisionConfig = params.collision
+  if (collisionConfig?.enabled) {
+    const floorHeight = Number.isFinite(collisionConfig.floorHeight)
+      ? collisionConfig.floorHeight
+      : 0
+    collisionState = {
+      radius: Math.max(0, collisionConfig.radius ?? 0.05),
+      drag: Math.max(0, collisionConfig.drag ?? 0),
+      bounciness: clamp(collisionConfig.bounciness ?? 0, 0, 1),
+      expireOnContact: !!collisionConfig.expireOnContact,
+      floorHeight
+    }
+  }
+
   return {
     index,
     color,
@@ -421,6 +436,7 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
     emitterHeight: emissionHeight ?? null,
     clusterAnchor,
     clusterIndex,
-    motionDelay
+    motionDelay,
+    collision: collisionState
   }
 }
