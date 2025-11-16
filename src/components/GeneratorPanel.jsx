@@ -588,6 +588,73 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
     )
   }
 
+  const renderGradientPreview = () => {
+    if (!Array.isArray(params.colorGradient) || params.colorGradient.length < 2) {
+      return null
+    }
+    const stops = [...params.colorGradient]
+      .map(stop => ({
+        stop: typeof stop.stop === 'number' ? stop.stop : typeof stop.t === 'number' ? stop.t : 0,
+        color: stop.color || stop.value || '#ffffff'
+      }))
+      .sort((a, b) => a.stop - b.stop)
+    if (stops.length < 2) {
+      return null
+    }
+    const gradientStyle = {
+      background: `linear-gradient(90deg, ${stops
+        .map(stop => `${stop.color} ${(stop.stop * 100).toFixed(0)}%`)
+        .join(', ')})`
+    }
+    return (
+      <div className="control-group">
+        <label className="control-label">
+          <span>Gradient Palette</span>
+        </label>
+        <div
+          style={{
+            width: '100%',
+            height: 32,
+            borderRadius: 6,
+            border: '1px solid rgba(255,255,255,0.15)',
+            ...gradientStyle
+          }}
+        />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          {stops.map((stop, index) => (
+            <div
+              key={`${stop.color}-${index}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 8px',
+                borderRadius: 6,
+                background: 'rgba(255,255,255,0.06)',
+                fontSize: 12
+              }}
+            >
+              <span
+                style={{
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  background: stop.color,
+                  border: '1px solid rgba(255,255,255,0.25)'
+                }}
+              />
+              <span>{stop.color.toUpperCase()}</span>
+              <span style={{ opacity: 0.7 }}>@ {(stop.stop * 100).toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
+          Gradient-driven colors are locked for this effect. Import a Snowstorm file or edit the preset to change the stops.
+        </p>
+      </div>
+    )
+  }
+
   const renderSection = (section) => (
     <div className="panel-section" key={section.id}>
       <h3 className="section-title">
@@ -596,6 +663,7 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
       </h3>
       {section.fields.map(field => renderField(field))}
       {section.customContent === 'texture' && renderTextureExtras()}
+      {section.customContent === 'colorGradient' && renderGradientPreview()}
     </div>
   )
 

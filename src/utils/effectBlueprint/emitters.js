@@ -49,6 +49,7 @@ export const computeEmissionPosition = (shape, spread, random, style, params) =>
     const thickness = style.arcThickness ?? 0.4
     const heightOffset = style.arcHeightOffset ?? 0
     const lateral = (random(36) - 0.5) * thickness
+    const layerT = thickness !== 0 ? clamp((lateral / thickness) + 0.5, 0, 1) : 0.5
 
     const x = Math.cos(angle) * radius
     const y = Math.sin(angle) * radius + heightOffset
@@ -63,7 +64,8 @@ export const computeEmissionPosition = (shape, spread, random, style, params) =>
       arcRadius: radius,
       arcAngleRange: { start: startAngle, end: endAngle },
       lateral,
-      heightOffset
+      heightOffset,
+      layerT
     }
   }
 
@@ -140,4 +142,3 @@ export const computeEmissionPosition = (shape, spread, random, style, params) =>
     }
   }
 }
-

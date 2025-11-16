@@ -1,10 +1,16 @@
-import { getParticleShapeDefinition } from './constants'
+import { EFFECT_STYLES, getParticleShapeDefinition } from './constants'
 import { buildAnimationKeyframes } from './keyframes'
 import { buildParticleState } from './state'
 import { getEffectStyle } from './styles'
 
+const clamp01 = (value) => {
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(1, value))
+}
+
 export const buildParticleSystemBlueprint = (params) => {
   const style = getEffectStyle(params.effectType)
+  const hasNamedStyle = !!EFFECT_STYLES[params.effectType]
   const shapeDefinition = getParticleShapeDefinition(params.particleShape)
   const emitterSettings = params.emitter || {}
   const emitterRateMode = emitterSettings.rateMode || 'steady'
@@ -27,6 +33,25 @@ export const buildParticleSystemBlueprint = (params) => {
         style[key] = value
       }
     })
+  }
+
+  if (Array.isArray(params.colorGradient) && params.colorGradient.length > 0) {
+    style.colorMode = params.colorMode || 'gradient'
+    style.colorGradient = params.colorGradient
+      .map(stop => ({
+        stop: clamp01(stop.stop ?? stop.t ?? 0),
+        color: stop.color || stop.value || '#ffffff'
+      }))
+      .sort((a, b) => a.stop - b.stop)
+    if (params.colorGradientSource) {
+      style.colorGradientSource = params.colorGradientSource
+    }
+    if (params.colorGradientPlayback) {
+      style.colorGradientPlayback = params.colorGradientPlayback
+    }
+    if (Number.isFinite(params.colorGradientSpeed)) {
+      style.colorGradientSpeed = params.colorGradientSpeed
+    }
   }
 
   // Apply user-controlled opacity if provided
@@ -54,6 +79,20 @@ export const buildParticleSystemBlueprint = (params) => {
       : style.customEmitter === 'rainbowArc'
 
   if (wantsArcEmitter) {
+    if (!hasNamedStyle && style.customEmitter !== 'rainbowArc' && EFFECT_STYLES.rainbow) {
+      const arcDefaults = EFFECT_STYLES.rainbow
+      Object.keys(arcDefaults).forEach(key => {
+        if (key === 'customEmitter') return
+        const value = arcDefaults[key]
+        if (Array.isArray(value)) {
+          style[key] = [...value]
+        } else if (value && typeof value === 'object') {
+          style[key] = { ...value }
+        } else {
+          style[key] = value
+        }
+      })
+    }
     style.customEmitter = 'rainbowArc'
   } else if (style.customEmitter === 'rainbowArc') {
     style.customEmitter = null

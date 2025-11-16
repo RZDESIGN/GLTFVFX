@@ -53,9 +53,20 @@ export const PANEL_SECTIONS = [
     id: 'colors',
     icon: '🎨',
     title: 'Colors',
+    customContent: 'colorGradient',
     fields: [
-      { type: 'color', key: 'primaryColor', label: 'Primary Color' },
-      { type: 'color', key: 'secondaryColor', label: 'Secondary Color' }
+      {
+        type: 'color',
+        key: 'primaryColor',
+        label: 'Primary Color',
+        visibleWhen: params => !Array.isArray(params.colorGradient) || params.colorGradient.length < 2
+      },
+      {
+        type: 'color',
+        key: 'secondaryColor',
+        label: 'Secondary Color',
+        visibleWhen: params => !Array.isArray(params.colorGradient) || params.colorGradient.length < 2
+      }
     ]
   },
   {
