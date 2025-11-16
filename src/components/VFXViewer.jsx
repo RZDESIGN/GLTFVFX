@@ -417,8 +417,19 @@ const VFXViewer = ({ params }) => {
         const duration = blueprint.duration && blueprint.duration > 0
           ? blueprint.duration
           : params.lifetime || 1
+        const loops = !!blueprint.loops
         const localElapsed = Math.max(0, elapsed - effectStartTimeRef.current)
-        const playbackTime = duration > 0 ? localElapsed % duration : localElapsed
+        let playbackTime = localElapsed
+        if (duration > 0) {
+          if (loops) {
+            playbackTime = localElapsed % duration
+          } else {
+            if (localElapsed >= duration) {
+              effectStartTimeRef.current = elapsed
+              playbackTime = 0
+            }
+          }
+        }
 
         particleSystem.children.forEach(particle => {
           const keyframes = particle.userData.keyframes

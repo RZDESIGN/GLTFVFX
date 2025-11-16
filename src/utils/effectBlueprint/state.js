@@ -330,7 +330,8 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
   const allowDirectionalVelocity =
     motionMode === 'custom' ||
     animationType === 'explode' ||
-    animationType === 'rise'
+    animationType === 'rise' ||
+    animationType === 'custom'
 
   const baseSpeed = allowDirectionalVelocity
     ? Math.max(0, params.particleSpeed) * speedMultiplier
@@ -348,6 +349,8 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
   const driftPhase = random(19) * Math.PI * 2
 
   const swirlPhase = random(24) * Math.PI * 2
+  const emitterSettings = params.emitter || {}
+  const loopsForever = !!emitterSettings.loopParticles
 
   const totalParticles = Math.max(1, totalCount)
   let arcFlowMode = params.arcFlowMode || style.arcFlowMode || 'continuous'
@@ -394,6 +397,7 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
     driftAmplitude,
     driftPhase,
     swirlPhase,
+    loopsForever,
     sizeScalar,
     arcRadius,
     arcRange: arcAngleRange,

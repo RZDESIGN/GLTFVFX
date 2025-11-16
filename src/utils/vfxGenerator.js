@@ -282,6 +282,8 @@ export const generateVFXGLTF = async (params) => {
       ...(gltf.extras || {}),
       parameters: {
         effectType: params.effectType,
+        identifier: params.effectIdentifier || params.effectType,
+        description: params.effectDescription || '',
         particleCount: params.particleCount,
         particleSize: params.particleSize,
         particleSpeed: params.particleSpeed,
@@ -305,6 +307,7 @@ export const generateVFXGLTF = async (params) => {
         motionDirectionMode: params.motionDirectionMode || 'outwards',
         motionDirection: params.motionDirection || { x: 0, y: 1, z: 0 },
         motionAcceleration: params.motionAcceleration || { x: 0, y: 0, z: 0 },
+        motionDrag: params.motionDrag || 0,
         useArcEmitter: !!(params.useArcEmitter ?? (style?.customEmitter === 'rainbowArc')),
         arcRadius: params.arcRadius ?? style?.arcRadius ?? null,
         arcStartAngle: params.arcStartAngle ?? style?.arcStartAngle ?? null,
@@ -324,7 +327,25 @@ export const generateVFXGLTF = async (params) => {
               flowMode: style.arcFlowMode ?? 'continuous',
               layers: Array.isArray(style.arcLayers) ? style.arcLayers : null
             }
-          : null
+          : null,
+        emitter: params.emitter || null,
+        emitterSpace: params.emitterSpace || null,
+        rotation: params.rotation || null,
+        collision: params.collision || null,
+        textureFlipbook: params.textureFlipbook || null,
+        uvOffset: params.uvOffset || { u: 0, v: 0 },
+        uvSize: params.uvSize || { u: 1, v: 1 },
+        billboardFacing: params.billboardFacing || 'rotate_xyz',
+        billboardDirectionMode: params.billboardDirectionMode || 'velocity',
+        billboardSpeedThreshold: params.billboardSpeedThreshold || 0,
+        billboardCustomDirection: params.billboardCustomDirection || { x: 0, y: 1, z: 0 }
+      }
+    }
+
+    if (params.importMetadata) {
+      gltf.extras.importMetadata = {
+        ...(gltf.extras.importMetadata || {}),
+        ...params.importMetadata
       }
     }
 

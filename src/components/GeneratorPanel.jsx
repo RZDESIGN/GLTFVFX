@@ -1,8 +1,10 @@
 import './GeneratorPanel.css'
 import { EFFECT_PRESETS, PARTICLE_SHAPE_OPTIONS } from '../utils/effectBlueprint'
-import { ARC_FLOW_MODE_OPTIONS, EMISSION_SHAPE_OPTIONS, MOTION_DIRECTION_OPTIONS, TEXTURE_MODE_OPTIONS } from '../constants/uiOptions'
+import { ARC_FLOW_MODE_OPTIONS, EMISSION_SHAPE_OPTIONS } from '../constants/uiOptions'
 import { generateBlockyCanvas } from '../utils/textureGenerator'
 import { downloadCanvasAsPNG } from '../utils/downloadHelpers'
+import { PARAM_FALLBACKS } from '../utils/vfxParameters'
+import { PANEL_SECTIONS } from '../constants/panelSchema'
 
 const animationTypeLabels = {
   orbit: 'Orbit',
@@ -36,7 +38,6 @@ const particleShapes = PARTICLE_SHAPE_OPTIONS
 const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
   const activeParticleShape = params.particleShape || 'style'
   const ensureVector = (target) => target || { x: 0, y: 0, z: 0 }
-  const directionMode = params.motionDirectionMode || 'outwards'
   const arcEnabled = !!params.useArcEmitter
 
   const parseNumber = (value, fallback = 0) => {
@@ -78,260 +79,216 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
     }
   }
 
-  return (
-    <div className="generator-panel">
-      {/* Effect Type */}
-      <div className="panel-section">
-        <h3 className="section-title">
-          <span>🎨</span>
-          Effect Type
-        </h3>
-        <div className="effect-type-grid">
-          {effectTypes.map(type => (
-            <button
-              key={type.id}
-              className={`effect-type-button ${params.effectType === type.id ? 'active' : ''}`}
-              onClick={() => onParamChange('effectType', type.id)}
-            >
-              <span className="effect-icon">{type.icon}</span>
-              <div className="effect-type-text">
-                <span className="effect-name">{type.name}</span>
-                <span className="effect-animation-label">
-                  {type.animationLabel} style
-                </span>
-              </div>
-            </button>
+  const getFieldValue = (path) => {
+    return path.split('.').reduce((acc, segment) => {
+      if (acc === undefined || acc === null) return undefined
+      return acc[segment]
+    }, params)
+  }
+
+  const handleFieldChange = (path, value) => {
+    if (!path.includes('.')) {
+      onParamChange(path, value)
+      return
+    }
+    const segments = path.split('.')
+    const rootKey = segments[0]
+    const rest = segments.slice(1)
+    const rootValue = params[rootKey] || {}
+    const updatedRoot = { ...rootValue }
+    let cursor = updatedRoot
+    for (let i = 0; i < rest.length - 1; i++) {
+      const key = rest[i]
+      const nextValue = cursor[key]
+      cursor[key] = nextValue && typeof nextValue === 'object' ? { ...nextValue } : {}
+      cursor = cursor[key]
+    }
+    cursor[rest[rest.length - 1]] = value
+    onParamChange(rootKey, updatedRoot)
+  }
+
+  const renderRangeGroup = (field, value, onChange) => {
+    return (
+      <div className="control-group" key={field.key}>
+        <label className="control-label">
+          <span>{field.label}</span>
+          {typeof value === 'number' && (
+            <span className="control-value">
+              {value.toFixed(field.decimals ?? 0)}
+            </span>
+          )}
+        </label>
+        <input
+          type="range"
+          min={field.min}
+          max={field.max}
+          step={field.step || 1}
+          value={typeof value === 'number' ? value : field.min || 0}
+          onChange={onChange}
+          className="range-input"
+        />
+      </div>
+    )
+  }
+
+  const renderColorField = (field, value) => {
+    return (
+      <div className="control-group" key={field.key}>
+        <label className="control-label">
+          <span>{field.label}</span>
+        </label>
+        <div className="color-input-wrapper">
+          <input
+            type="color"
+            value={value || '#ffffff'}
+            onChange={(e) => handleFieldChange(field.key, e.target.value)}
+            className="color-input"
+          />
+          <input
+            type="text"
+            value={value || ''}
+            onChange={(e) => handleFieldChange(field.key, e.target.value)}
+            className="color-hex"
+          />
+        </div>
+      </div>
+    )
+  }
+
+  const renderVectorField = (field, value) => {
+    const vectorValue = value || ensureVector()
+    return (
+      <div className="control-group" key={field.key}>
+        <label className="control-label">
+          <span>{field.label}</span>
+        </label>
+        <div className="vector-input">
+          {field.axes.map(axis => (
+            <div key={axis} className="vector-field">
+              <span>{axis.toUpperCase()}</span>
+              <input
+                type="number"
+                step={field.step || 0.05}
+                value={vectorValue[axis]}
+                onChange={(e) => handleFieldChange(field.key, {
+                  ...vectorValue,
+                  [axis]: parseNumber(e.target.value, vectorValue[axis])
+                })}
+                className="control-input"
+              />
+            </div>
           ))}
         </div>
       </div>
+    )
+  }
 
-      {/* Particle Settings */}
-      <div className="panel-section">
-        <h3 className="section-title">
-          <span>⚙️</span>
-          Particle Settings
-        </h3>
-        
-        <div className="control-group">
-          <label className="control-label">
-            <span>Particle Count</span>
-            <span className="control-value">{params.particleCount}</span>
-          </label>
-          <input
-            type="range"
-            min="10"
-            max="200"
-            value={params.particleCount}
-            onChange={(e) => onParamChange('particleCount', parseInt(e.target.value))}
-            className="range-input"
-          />
-        </div>
-
-        <div className="control-group">
-          <label className="control-label">
-            <span>Particle Size</span>
-            <span className="control-value">{params.particleSize.toFixed(2)}</span>
-          </label>
-          <input
-            type="range"
-            min="0.05"
-            max="0.5"
-            step="0.01"
-            value={params.particleSize}
-            onChange={(e) => onParamChange('particleSize', parseFloat(e.target.value))}
-            className="range-input"
-          />
-        </div>
-
-        <div className="control-group">
-          <label className="control-label">
-            <span>Particle Speed</span>
-            <span className="control-value">{params.particleSpeed.toFixed(1)}</span>
-          </label>
-          <input
-            type="range"
-            min="0.1"
-            max="3"
-            step="0.1"
-            value={params.particleSpeed}
-            onChange={(e) => onParamChange('particleSpeed', parseFloat(e.target.value))}
-            className="range-input"
-          />
-        </div>
-
-        <div className="control-group">
-          <label className="control-label">
-            <span>Spread</span>
-            <span className="control-value">{params.spread.toFixed(1)}</span>
-          </label>
-          <input
-            type="range"
-            min="0.5"
-            max="3"
-            step="0.1"
-            value={params.spread}
-            onChange={(e) => onParamChange('spread', parseFloat(e.target.value))}
-            className="range-input"
-          />
-        </div>
-
-        <div className="control-group">
-          <label className="control-label">
-            <span>Glow Intensity</span>
-            <span className="control-value">{params.glowIntensity.toFixed(1)}</span>
-          </label>
-          <input
-            type="range"
-            min="0.5"
-            max="5"
-            step="0.1"
-            value={params.glowIntensity}
-            onChange={(e) => onParamChange('glowIntensity', parseFloat(e.target.value))}
-            className="range-input"
-          />
-        </div>
-
-        <div className="control-group">
-          <label className="control-label">
-            <span>Opacity</span>
-            <span className="control-value">{(Number.isFinite(params.opacity) ? params.opacity : 1).toFixed(2)}</span>
-          </label>
-          <input
-            type="range"
-            min="0.05"
-            max="1"
-            step="0.01"
-            value={Number.isFinite(params.opacity) ? params.opacity : 1}
-            onChange={(e) => onParamChange('opacity', parseFloat(e.target.value))}
-            className="range-input"
-          />
-        </div>
-
-        <div className="control-group">
-          <label className="control-label">
-            <span>Lifetime (seconds)</span>
-            <span className="control-value">{params.lifetime.toFixed(1)}</span>
-          </label>
-          <input
-            type="range"
-            min="0.5"
-            max="5"
-            step="0.1"
-            value={params.lifetime}
-            onChange={(e) => onParamChange('lifetime', parseFloat(e.target.value))}
-            className="range-input"
-          />
-        </div>
-      </div>
-
-      {/* Colors */}
-      <div className="panel-section">
-        <h3 className="section-title">
-          <span>🎨</span>
-          Colors
-        </h3>
-        
-        <div className="control-group">
-          <label className="control-label">
-            <span>Primary Color</span>
-          </label>
-          <div className="color-input-wrapper">
-            <input
-              type="color"
-              value={params.primaryColor}
-              onChange={(e) => onParamChange('primaryColor', e.target.value)}
-              className="color-input"
-            />
-            <input
-              type="text"
-              value={params.primaryColor}
-              onChange={(e) => onParamChange('primaryColor', e.target.value)}
-              className="color-hex"
-            />
-          </div>
-        </div>
-
-        <div className="control-group">
-          <label className="control-label">
-            <span>Secondary Color</span>
-          </label>
-          <div className="color-input-wrapper">
-            <input
-              type="color"
-              value={params.secondaryColor}
-              onChange={(e) => onParamChange('secondaryColor', e.target.value)}
-              className="color-input"
-            />
-            <input
-              type="text"
-              value={params.secondaryColor}
-              onChange={(e) => onParamChange('secondaryColor', e.target.value)}
-              className="color-hex"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Texture */}
-      <div className="panel-section">
-        <h3 className="section-title">
-          <span>🧩</span>
-          Texture
-        </h3>
-        <div className="control-group">
-          <label className="control-label">
-            <span>Mode</span>
-          </label>
-          <select
-            value={params.textureMode || 'auto'}
-            onChange={(e) => onParamChange('textureMode', e.target.value)}
-            className="control-input"
-          >
-            {TEXTURE_MODE_OPTIONS.map(option => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {params.textureMode === 'auto' && (
-          <div className="control-group">
+  const renderField = (field) => {
+    if (field.visibleWhen && !field.visibleWhen(params)) {
+      return null
+    }
+    const value = getFieldValue(field.key)
+    switch (field.type) {
+      case 'text':
+        return (
+          <div className="control-group" key={field.key}>
             <label className="control-label">
-              <span>Resolution</span>
-              <span className="control-value">{(params.textureResolution || 16)}×{(params.textureResolution || 16)}</span>
+              <span>{field.label}</span>
             </label>
             <input
-              type="range"
-              min="8"
-              max="64"
-              step="1"
-              value={params.textureResolution || 16}
-              onChange={(e) => onParamChange('textureResolution', parseInt(e.target.value))}
-              className="range-input"
+              type="text"
+              value={value || ''}
+              placeholder={field.placeholder}
+              onChange={(e) => handleFieldChange(field.key, e.target.value)}
+              className="control-input"
             />
           </div>
-        )}
-
-        {params.textureMode !== 'none' && (
-          <div className="control-group">
+        )
+      case 'textarea':
+        return (
+          <div className="control-group" key={field.key}>
             <label className="control-label">
-              <span>Texture Blend</span>
-              <span className="control-value">{(Number.isFinite(params.textureBlend) ? params.textureBlend : 1).toFixed(2)}</span>
+              <span>{field.label}</span>
+            </label>
+            <textarea
+              value={value || ''}
+              placeholder={field.placeholder}
+              onChange={(e) => handleFieldChange(field.key, e.target.value)}
+              className="panel-textarea"
+            />
+          </div>
+        )
+      case 'number':
+        return (
+          <div className="control-group" key={field.key}>
+            <label className="control-label">
+              <span>{field.label}</span>
             </label>
             <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={Number.isFinite(params.textureBlend) ? params.textureBlend : 1}
-              onChange={(e) => onParamChange('textureBlend', parseFloat(e.target.value))}
-              className="range-input"
+              type="number"
+              min={field.min}
+              max={field.max}
+              step={field.step || 'any'}
+              value={typeof value === 'number' ? value : ''}
+              onChange={(e) => handleFieldChange(field.key, parseNumber(e.target.value, value || 0))}
+              className="control-input"
             />
           </div>
-        )}
+        )
+      case 'range':
+        return renderRangeGroup(field, typeof value === 'number' ? value : (field.min || 0), (e) => {
+          handleFieldChange(field.key, parseFloat(e.target.value))
+        })
+      case 'select':
+        return (
+          <div className="control-group" key={field.key}>
+            <label className="control-label">
+              <span>{field.label}</span>
+            </label>
+            <select
+              value={value ?? field.options[0]?.value}
+              onChange={(e) => handleFieldChange(field.key, e.target.value)}
+              className="control-input"
+            >
+              {field.options.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )
+      case 'toggle':
+        return (
+          <div className="control-group" key={field.key}>
+            <label className="control-label">
+              <span>{field.label}</span>
+            </label>
+            <label className="toggle-input">
+              <input
+                type="checkbox"
+                checked={!!value}
+                onChange={(e) => handleFieldChange(field.key, e.target.checked)}
+              />
+              <span className="toggle-display" />
+            </label>
+          </div>
+        )
+      case 'color':
+        return renderColorField(field, value)
+      case 'vector':
+        return renderVectorField(field, value)
+      default:
+        return null
+    }
+  }
 
-        {/* Preview + Export */}
+  const renderTextureExtras = () => {
+    const textureFlipbook = params.textureFlipbook || { ...PARAM_FALLBACKS.textureFlipbook }
+    const uvOffset = params.uvOffset || { ...PARAM_FALLBACKS.uvOffset }
+    const uvSize = params.uvSize || { ...PARAM_FALLBACKS.uvSize }
+    return (
+      <>
         {params.textureMode === 'auto' && (
           <div className="control-group">
             <label className="control-label">
@@ -435,7 +392,245 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
             )}
           </>
         )}
+
+        {params.textureMode !== 'none' && (
+          <>
+            <div className="control-group">
+              <label className="control-label">
+                <span>UV Offset</span>
+              </label>
+              <div className="vector-input">
+                {['u', 'v'].map(axis => (
+                  <div key={axis} className="vector-field">
+                    <span>{axis.toUpperCase()}</span>
+                    <input
+                      type="number"
+                      value={uvOffset[axis]}
+                      onChange={(e) => handleFieldChange('uvOffset', {
+                        ...uvOffset,
+                        [axis]: parseNumber(e.target.value, uvOffset[axis])
+                      })}
+                      className="control-input"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="control-group">
+              <label className="control-label">
+                <span>UV Size</span>
+              </label>
+              <div className="vector-input">
+                {['u', 'v'].map(axis => (
+                  <div key={axis} className="vector-field">
+                    <span>{axis.toUpperCase()}</span>
+                    <input
+                      type="number"
+                      value={uvSize[axis]}
+                      onChange={(e) => handleFieldChange('uvSize', {
+                        ...uvSize,
+                        [axis]: parseNumber(e.target.value, uvSize[axis])
+                      })}
+                      className="control-input"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="control-group">
+              <label className="control-label">
+                <span>Enable Flipbook</span>
+                <span className="control-value">{textureFlipbook.enabled ? 'On' : 'Off'}</span>
+              </label>
+              <label className="toggle-input">
+                <input
+                  type="checkbox"
+                  checked={!!textureFlipbook.enabled}
+                  onChange={(e) => handleFieldChange('textureFlipbook', { ...textureFlipbook, enabled: e.target.checked })}
+                />
+                <span className="toggle-display" />
+              </label>
+            </div>
+            {textureFlipbook.enabled && (
+              <>
+                <div className="control-group">
+                  <label className="control-label">
+                    <span>Texture Size</span>
+                  </label>
+                  <div className="vector-input">
+                    <div className="vector-field">
+                      <span>Width</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={textureFlipbook.textureWidth}
+                        onChange={(e) => handleFieldChange('textureFlipbook', { ...textureFlipbook, textureWidth: Math.max(1, parseInt(e.target.value) || textureFlipbook.textureWidth) })}
+                        className="control-input"
+                      />
+                    </div>
+                    <div className="vector-field">
+                      <span>Height</span>
+                      <input
+                        type="number"
+                        min="1"
+                        value={textureFlipbook.textureHeight}
+                        onChange={(e) => handleFieldChange('textureFlipbook', { ...textureFlipbook, textureHeight: Math.max(1, parseInt(e.target.value) || textureFlipbook.textureHeight) })}
+                        className="control-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="control-group">
+                  <label className="control-label">
+                    <span>Frame Size (UV)</span>
+                  </label>
+                  <div className="vector-input">
+                    {['u', 'v'].map(axis => (
+                      <div key={axis} className="vector-field">
+                        <span>{axis.toUpperCase()}</span>
+                        <input
+                          type="number"
+                          value={textureFlipbook.sizeUV[axis]}
+                          onChange={(e) => handleFieldChange('textureFlipbook', {
+                            ...textureFlipbook,
+                            sizeUV: {
+                              ...textureFlipbook.sizeUV,
+                              [axis]: parseNumber(e.target.value, textureFlipbook.sizeUV[axis])
+                            }
+                          })}
+                          className="control-input"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="control-group">
+                  <label className="control-label">
+                    <span>Step (UV)</span>
+                  </label>
+                  <div className="vector-input">
+                    {['u', 'v'].map(axis => (
+                      <div key={axis} className="vector-field">
+                        <span>{axis.toUpperCase()}</span>
+                        <input
+                          type="number"
+                          value={textureFlipbook.stepUV[axis]}
+                          onChange={(e) => handleFieldChange('textureFlipbook', {
+                            ...textureFlipbook,
+                            stepUV: {
+                              ...textureFlipbook.stepUV,
+                              [axis]: parseNumber(e.target.value, textureFlipbook.stepUV[axis])
+                            }
+                          })}
+                          className="control-input"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="control-group">
+                  <label className="control-label">
+                    <span>FPS</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={textureFlipbook.fps}
+                    onChange={(e) => handleFieldChange('textureFlipbook', { ...textureFlipbook, fps: Math.max(0, parseNumber(e.target.value, textureFlipbook.fps)) })}
+                    className="control-input"
+                  />
+                </div>
+                <div className="control-group">
+                  <label className="control-label">
+                    <span>Max Frame</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={textureFlipbook.maxFrame}
+                    onChange={(e) => handleFieldChange('textureFlipbook', { ...textureFlipbook, maxFrame: Math.max(1, parseInt(e.target.value) || textureFlipbook.maxFrame) })}
+                    className="control-input"
+                  />
+                </div>
+                <div className="control-group">
+                  <label className="control-label">
+                    <span>Stretch to Lifetime</span>
+                    <span className="control-value">{textureFlipbook.stretchToLifetime ? 'Yes' : 'No'}</span>
+                  </label>
+                  <label className="toggle-input">
+                    <input
+                      type="checkbox"
+                      checked={!!textureFlipbook.stretchToLifetime}
+                      onChange={(e) => handleFieldChange('textureFlipbook', { ...textureFlipbook, stretchToLifetime: e.target.checked })}
+                    />
+                    <span className="toggle-display" />
+                  </label>
+                </div>
+                <div className="control-group">
+                  <label className="control-label">
+                    <span>Loop</span>
+                    <span className="control-value">{textureFlipbook.loop ? 'Yes' : 'No'}</span>
+                  </label>
+                  <label className="toggle-input">
+                    <input
+                      type="checkbox"
+                      checked={!!textureFlipbook.loop}
+                      onChange={(e) => handleFieldChange('textureFlipbook', { ...textureFlipbook, loop: e.target.checked })}
+                    />
+                    <span className="toggle-display" />
+                  </label>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </>
+    )
+  }
+
+  const renderSection = (section) => (
+    <div className="panel-section" key={section.id}>
+      <h3 className="section-title">
+        <span>{section.icon}</span>
+        {section.title}
+      </h3>
+      {section.fields.map(field => renderField(field))}
+      {section.customContent === 'texture' && renderTextureExtras()}
+    </div>
+  )
+
+  return (
+    <div className="generator-panel">
+      {/* Quick Setup */}
+      <div className="panel-section">
+        <h3 className="section-title">
+          <span>⚡</span>
+          Quick Setup
+        </h3>
+      <div className="effect-type-grid">
+        {effectTypes.map(type => (
+          <button
+            key={type.id}
+            className={`effect-type-button ${params.effectType === type.id ? 'active' : ''}`}
+            onClick={() => onParamChange('effectType', type.id)}
+          >
+            <span className="effect-icon">{type.icon}</span>
+            <div className="effect-type-text">
+              <span className="effect-name">{type.name}</span>
+              <span className="effect-animation-label">
+                {type.animationLabel} style
+              </span>
+            </div>
+          </button>
+        ))}
       </div>
+      <button className="randomize-button" onClick={onRandomize}>
+        <span role="img" aria-hidden="true">🎲</span>
+        Randomize Effect
+      </button>
+    </div>
+
+      {PANEL_SECTIONS.map(renderSection)}
 
       {/* Particle Shape */}
       <div className="panel-section">
@@ -515,85 +710,7 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
         </div>
       </div>
 
-      {/* Motion */}
-      <div className="panel-section">
-        <h3 className="section-title">
-          <span>💨</span>
-          Motion
-        </h3>
-        <div className="control-group">
-          <label className="control-label">
-            <span>Direction Mode</span>
-          </label>
-          <select
-            value={directionMode}
-            onChange={(e) => onParamChange('motionDirectionMode', e.target.value)}
-            className="control-input"
-          >
-            {MOTION_DIRECTION_OPTIONS.map(option => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {directionMode === 'custom' && (
-          <div className="control-group">
-            <label className="control-label">
-              <span>Custom Direction</span>
-            </label>
-            <div className="vector-input">
-              {['x', 'y', 'z'].map(axis => (
-                <div key={axis} className="vector-field">
-                  <span>{axis.toUpperCase()}</span>
-                  <input
-                    type="number"
-                    step="0.05"
-                    value={ensureVector(params.motionDirection)[axis]}
-                    onChange={(e) => {
-                      const base = ensureVector(params.motionDirection)
-                      const next = parseFloat(e.target.value)
-                      onParamChange('motionDirection', {
-                        ...base,
-                        [axis]: Number.isFinite(next) ? next : 0
-                      })
-                    }}
-                    className="control-input"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="control-group">
-          <label className="control-label">
-            <span>Acceleration</span>
-          </label>
-          <div className="vector-input">
-            {['x', 'y', 'z'].map(axis => (
-              <div key={axis} className="vector-field">
-                <span>{axis.toUpperCase()}</span>
-                <input
-                  type="number"
-                  step="0.05"
-                  value={ensureVector(params.motionAcceleration)[axis]}
-                  onChange={(e) => {
-                    const base = ensureVector(params.motionAcceleration)
-                    const next = parseFloat(e.target.value)
-                    onParamChange('motionAcceleration', {
-                      ...base,
-                      [axis]: Number.isFinite(next) ? next : 0
-                    })
-                  }}
-                  className="control-input"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Arc / Ribbon */}
+/* Arc / Ribbon */}
       <div className="panel-section">
         <h3 className="section-title">
           <span>🌈</span>
@@ -717,11 +834,29 @@ const GeneratorPanel = ({ params, onParamChange, onRandomize }) => {
         )}
       </div>
 
-      {/* Randomize Button */}
-      <button className="randomize-button" onClick={onRandomize}>
-        <span>🎲</span>
-        Randomize
-      </button>
+      {/* Time */}
+      <div className="panel-section">
+        <h3 className="section-title">
+          <span>⏱️</span>
+          Time
+        </h3>
+        <div className="control-group">
+          <label className="control-label">
+            <span>Lifetime (seconds)</span>
+            <span className="control-value">{params.lifetime.toFixed(1)}</span>
+          </label>
+          <input
+            type="range"
+            min="0.2"
+            max="10"
+            step="0.1"
+            value={params.lifetime}
+            onChange={(e) => onParamChange('lifetime', parseFloat(e.target.value))}
+            className="range-input"
+          />
+        </div>
+      </div>
+
     </div>
   )
 }

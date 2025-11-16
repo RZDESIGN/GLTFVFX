@@ -6,6 +6,10 @@ import { getEffectStyle } from './styles'
 export const buildParticleSystemBlueprint = (params) => {
   const style = getEffectStyle(params.effectType)
   const shapeDefinition = getParticleShapeDefinition(params.particleShape)
+  const emitterSettings = params.emitter || {}
+  const emitterRateMode = emitterSettings.rateMode || 'steady'
+  const emitterLifetimeMode = emitterSettings.lifetimeMode || 'looping'
+  const useEmissionLoop = !!emitterSettings.loopParticles
 
   if (shapeDefinition && shapeDefinition.geometry) {
     style.geometry = { ...shapeDefinition.geometry }
@@ -95,7 +99,9 @@ export const buildParticleSystemBlueprint = (params) => {
 
   const particles = []
   for (let i = 0; i < count; i++) {
+    const cycleOffset = useEmissionLoop ? (i / count) : 0
     const state = buildParticleState(params, style, i, count)
+    state.cycleOffset = cycleOffset
     const keyframes = buildAnimationKeyframes(params, style, state, times)
     particles.push({
       ...state,
@@ -110,7 +116,7 @@ export const buildParticleSystemBlueprint = (params) => {
     system: {
       autoRotateSpeed: style.systemRotationSpeed ?? 0.35
     },
-    duration: times.length > 0 ? times[times.length - 1] : params.lifetime
+    duration: times.length > 0 ? times[times.length - 1] : params.lifetime,
+    loops: useEmissionLoop
   }
 }
-
