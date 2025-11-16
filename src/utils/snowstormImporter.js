@@ -71,6 +71,74 @@ const adjustColor = (hex, delta = 0) => {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`
 }
 
+const toHexColor = (value, fallback = '#ffffff') => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    const normalized = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed
+    if (/^[0-9a-f]{6}$/i.test(normalized)) {
+      return `#${normalized}`
+    }
+  }
+  if (Array.isArray(value)) {
+    return colorFromNormalized(value[0], value[1], value[2])
+  }
+  if (typeof value === 'object' && value !== null) {
+    return colorFromNormalized(value.r, value.g, value.b)
+  }
+  return fallback
+}
+
+const extractGradientStops = (gradient) => {
+  if (!gradient || typeof gradient !== 'object') return []
+  return Object.entries(gradient)
+    .map(([stop, color]) => ({
+      stop: clamp(parseFloat(stop), 0, 1),
+      color: toHexColor(color)
+    }))
+    .sort((a, b) => a.stop - b.stop)
+}
+
+const findRadiusFromOffsetExpr = (expr) => {
+  if (typeof expr !== 'string') return null
+  const parts = expr.split('*').map(part => part.trim()).filter(Boolean)
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const segment = parts[i]
+    if (/emitter_age/i.test(segment)) continue
+    const samples = extractNumbers(segment).map(num => Math.abs(num)).filter(num => Number.isFinite(num))
+    if (samples.length) {
+      return Math.max(...samples)
+    }
+  }
+  const fallbackSamples = extractNumbers(expr).map(num => Math.abs(num)).filter(num => Number.isFinite(num))
+  return fallbackSamples.length ? Math.max(...fallbackSamples) : null
+}
+
+const detectArcEmitterFromPointShape = (shape) => {
+  if (!shape || !Array.isArray(shape.offset) || shape.offset.length < 2) {
+    return null
+  }
+  const [xExpr, yExpr, zExpr = 0] = shape.offset
+  if (typeof xExpr !== 'string' || typeof yExpr !== 'string') return null
+  const hasCos = /math\.cos/i.test(xExpr)
+  const hasSin = /math\.sin/i.test(yExpr)
+  if (!hasCos || !hasSin) return null
+  const radiusGuess =
+    findRadiusFromOffsetExpr(xExpr) ??
+    findRadiusFromOffsetExpr(yExpr) ??
+    2.5
+  const radius = Math.max(0.05, radiusGuess)
+  const thicknessBase = Math.max(radius * 0.35, 0.1)
+  return {
+    radius,
+    thickness: Math.max(0.05, thicknessBase),
+    heightOffset: resolveNumber(zExpr, 0),
+    startAngle: Math.PI * 0.05,
+    endAngle: Math.PI * 0.95,
+    flowSpeed: 0.65,
+    flowMode: 'continuous'
+  }
+}
+
 const ensureNested = (params, key, fallback) => {
   if (params[key]) return params[key]
   const next = typeof fallback === 'function' ? fallback() : { ...(fallback || {}) }
@@ -97,6 +165,24 @@ const pickEmitterShape = (components = {}, params, warnings) => {
   const shape = sphere || disc || box || point || null
 
   if (!shape) return
+
+  if (point) {
+    const arcConfig = detectArcEmitterFromPointShape(point)
+    if (arcConfig) {
+      params.useArcEmitter = true
+      params.emissionShape = 'disc'
+      params.emissionSurfaceOnly = true
+      params.arcRadius = arcConfig.radius
+      params.arcThickness = arcConfig.thickness
+      params.arcHeightOffset = arcConfig.heightOffset
+      params.arcStartAngle = arcConfig.startAngle
+      params.arcEndAngle = arcConfig.endAngle
+      params.arcFlowSpeed = arcConfig.flowSpeed
+      params.arcFlowMode = arcConfig.flowMode
+      params.motionDirectionMode = params.motionDirectionMode || 'outwards'
+      return
+    }
+  }
 
   if (sphere) {
     params.emissionShape = 'sphere'
@@ -193,6 +279,21 @@ const pickSize = (components = {}, params) => {
 const pickColors = (components = {}, params, warnings) => {
   const tint = components['minecraft:particle_appearance_tinting']
   if (!tint?.color) return
+
+  if (tint.color && typeof tint.color === 'object' && tint.color.gradient) {
+    const stops = extractGradientStops(tint.color.gradient)
+    if (stops.length) {
+      params.colorMode = 'gradient'
+      params.colorGradient = stops
+      params.colorGradientSource = params.useArcEmitter ? 'layer' : 'random'
+      params.colorGradientPlayback = 'static'
+      params.colorGradientSpeed = 0
+      params.primaryColor = stops[0].color
+      params.secondaryColor = stops[stops.length - 1].color
+      return
+    }
+  }
+
   const colorValues = Array.isArray(tint.color) ? tint.color : [tint.color]
   const r = resolveNumber(colorValues[0], 1)
   const g = resolveNumber(colorValues[1], 1)

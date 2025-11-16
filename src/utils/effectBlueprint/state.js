@@ -254,9 +254,16 @@ export const buildParticleState = (params, style, index, totalCount = 1) => {
     let gradientBaseT = 0
 
     switch (gradientSource) {
-      case 'angle':
-        gradientBaseT = wrap01(angle / (Math.PI * 2))
+      case 'angle': {
+        if (style.customEmitter === 'rainbowArc' && arcAngleRange) {
+          const arcSpan = Math.max(1e-5, (arcAngleRange.end ?? 0) - (arcAngleRange.start ?? 0))
+          const relativeAngle = angle - (arcAngleRange.start ?? 0)
+          gradientBaseT = clamp(relativeAngle / arcSpan, 0, 1)
+        } else {
+          gradientBaseT = wrap01(angle / (Math.PI * 2))
+        }
         break
+      }
       case 'layer':
         gradientBaseT = clamp(emissionLayer ?? random(25), 0, 1)
         break
