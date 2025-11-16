@@ -63,6 +63,15 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
     return clamp((progress - normalizedDelay) / availableWindow, 0, 1)
   }
 
+  const getDelayedProgressTime = (delay, phaseValue) => {
+    if (!duration) return 0
+    const normalizedDelay = clamp(delay || 0, 0, 0.95)
+    const availableWindow = Math.max(0.0001, 1 - normalizedDelay)
+    const clampedPhase = clamp(phaseValue, 0, 1)
+    const normalizedProgress = normalizedDelay + clampedPhase * availableWindow
+    return normalizedProgress * duration
+  }
+
   for (let i = 0; i < times.length; i++) {
     const time = times[i]
     let sampleTime
@@ -82,7 +91,7 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
     let scaleY = state.scale.y
     let scaleZ = state.scale.z
 
-    let allowVelocityBlend = true
+    let velocityContributionTime = elapsed
 
     if (isRainbowArc) {
       const flowMode = arcFlowMode
@@ -196,7 +205,8 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
             scaleX = state.scale.x * scaleGrowth * vanish
             scaleY = state.scale.y * scaleGrowth * vanish
             scaleZ = state.scale.z * scaleGrowth * vanish
-            allowVelocityBlend = false
+            const fadeStartTime = getDelayedProgressTime(state.motionDelay, activeWindow)
+            velocityContributionTime = Math.min(velocityContributionTime, fadeStartTime)
           }
           break
         }
@@ -221,7 +231,8 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
             scaleX *= vanish
             scaleY *= vanish
             scaleZ *= vanish
-            allowVelocityBlend = false
+            const fadeStartTime = getDelayedProgressTime(state.motionDelay, activeWindow)
+            velocityContributionTime = Math.min(velocityContributionTime, fadeStartTime)
           }
           break
         }
@@ -318,18 +329,19 @@ export const buildAnimationKeyframes = (params, style, state, times) => {
       scaleX *= vanish
       scaleY *= vanish
       scaleZ *= vanish
-      allowVelocityBlend = false
+      const fadeStartTime = duration * Math.max(0, 1 - fadeWindow)
+      velocityContributionTime = Math.min(velocityContributionTime, fadeStartTime)
     }
 
     if (
-      allowVelocityBlend &&
+      velocityContributionTime > 0 &&
       !isRainbowArc &&
       (velocityVec.x !== 0 || velocityVec.y !== 0 || velocityVec.z !== 0 || accelerationVec.x !== 0 || accelerationVec.y !== 0 || accelerationVec.z !== 0)
     ) {
-      const halfTimeSquared = 0.5 * elapsed * elapsed
-      x += velocityVec.x * elapsed + accelerationVec.x * halfTimeSquared
-      y += velocityVec.y * elapsed + accelerationVec.y * halfTimeSquared
-      z += velocityVec.z * elapsed + accelerationVec.z * halfTimeSquared
+      const halfTimeSquared = 0.5 * velocityContributionTime * velocityContributionTime
+      x += velocityVec.x * velocityContributionTime + accelerationVec.x * halfTimeSquared
+      y += velocityVec.y * velocityContributionTime + accelerationVec.y * halfTimeSquared
+      z += velocityVec.z * velocityContributionTime + accelerationVec.z * halfTimeSquared
     }
 
     if (colors && gradientStops) {
